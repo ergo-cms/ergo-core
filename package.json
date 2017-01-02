@@ -18,9 +18,11 @@
   "homepage": "https://github.com/ergo-cms/ergo-core#readme",
   "dependencies": {
     "bluebird": "^3.4.7",
-    "ergo-utils": "latest",
     "ergo-core": "latest",
-    "fs-extra": "^1.0.0"
+    "ergo-utils": "latest",
+    "fs-extra": "^1.0.0",
+    "marked": "^0.3.6",
+    "textile-js": "^2.0.1"
   },
   "devDependencies": {
     "chai": "^3.5.0",
