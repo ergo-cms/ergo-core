@@ -4,7 +4,7 @@
  **/
 
 /*
-* This is the api file for 'config' related helpers.
+* This is the api file for 'build'
 */
 "use strict";
 
@@ -14,13 +14,14 @@ var fs = require('ergo-utils').fs.extend(require('fs-extra'));
 var path = require('path');
 var Promise = require('bluebird');
 var plugin = require('./plugin')
+var context = require('../lib/context');
+var FileInfo = require('../lib/fileinfo');
+
 // promisify a few funcs we need
 "dirExists,ensureDir,readFile,writeFile".split(',').forEach(function(fn) {
 	fs[fn] = Promise.promisify(fs[fn])
 });
 
-l.debug = 3;
-l.verbose = 2;
 /*
 Options can be:
 
@@ -29,73 +30,42 @@ Options can be:
 }
 
 */
-var _textile = require('textile-js');
-var _marked = require('marked');
-
-
-plugin.addRenderer(plugin.RENDERER_TEXTILE, { 
-	  extensions: "tex,textile"
-	, renderFn: function(text) { return _textile(text) }
-	//, reconfigureFn: function(render_options) { this.textile_options = render_options; }
-}).addPreRenderer(plugin.RENDERER_TAG)
-//_textile.setConfig({})
-
-plugin.addRenderer(plugin.RENDERER_MARKDOWN, { 
-	  extensions: "md,markdown"
-	, renderFn: function(text) { return _marked(text) }
-	//, reconfigureFn: function(render_options) { this.md_options = render_options; }
-}).addPreRenderer(plugin.RENDERER_TAG)
-//_marked.setConfig({});
-
-plugin.addRenderer(plugin.RENDERER_TAG, { 
-	  extensions: "tem"
-	, renderFn: function(text) { return text; }
-	//, reconfigureFn: function(render_options) { this.textile_options = render_options; }
-	, calcExtensionFn: function(filename) {
-		// simply return the rightmost extension
-		return filename.split('.').slice(-1)
-	}
-})
 
 
 
 module.exports = function(options) {
 return Promise.coroutine(function *() {
 	options = options || {};
-	var config = require('./config').getConfigSync(options.working_dir, options);
+	var context = require('./config').getContextSync(options.working_dir);
+	options = context.mergeRuntimeOptions(options);
 
-	l.vvlog(l.dump(config));
+	// load the default plugins, markdown, textile and simple
+	var plugins_to_load = context.config.plugins || "{default}"
+	l.logd("Plugins to load: " + plugins_to_load);
+	_.toRealArray(plugins_to_load, ',').forEach(function(name) {
+		if (name=="{default}" || name=="default")
+		{
+			plugin.loadPlugin("simpletag", context)
+			plugin.loadPlugin("textile", context)
+			plugin.loadPlugin("marked", context)
+		}
+		else
+			plugin.loadPlugin(name, context)
+	});
 
-	if (!(yield fs.dirExists(config.getSourcePath())))
-		throw new Error("Missing source path: "+config.getSourcePath());
+	l.vvlogd("Context is:\n"+l.dump(context));
+
+	if (!(yield fs.dirExists(context.getSourcePath())))
+		throw new Error("Missing source path: "+context.getSourcePath());
 
 	// (We'll deal with missing layouts/partials as they arise, since they may not actually be needed)
-	yield fs.ensureDir(config.getOutPath());
+	yield fs.ensureDir(context.getOutPath());
 
-	var _buildFile = function(item) {
-		return Promise.coroutine(function *() {
-			// this is where most of the action occurs.
-			l.vvlog(item.path+ "...")
-			var chain = plugin.buildRenderChain(item.path, config); // TODO. Make options specific for the renderer?
-			var renderers = chain.renderers;
-			//l.vlogd(l.dump(renderers));
-			var text = yield fs.readFile(item.path);
-			l.vvlogd("Read OK " + item.path)
-			renderers.forEach(function(r) {
-				l.vvlog("Rendering with '" + r.name + "' " + item.path)
-				text = r.render(text);
+	var _loadFile = function(item) {
+		return context.addFile(item.path, item.stats)
+			.then(function() {
+				return true;
 			})
-
-			var pathofs = path.relative(config.getSourcePath(), path.dirname(item.path));
-			var destdir = path.join(config.getOutPath(), pathofs);
-			var destfile = path.join(destdir, chain.filename);
-			l.vvlog("Ensuring '"+destdir+"'...")
-			yield fs.ensureDir(destdir);
-			l.vvlog("Writing to '"+destfile+"'...")
-			yield fs.writeFile(destfile, text);
-			l.vvlogd("Write OK")
-			return true;
-		})();
 	}
 
 
@@ -104,17 +74,18 @@ return Promise.coroutine(function *() {
 			var p = Promise.resolve();
 			var walkerP = new Promise(function(resolve) { // I'd love to know how to not use the promise anti-pattern here!
 
-				function resolvall() {
+				function resolvall(result) {
 					p.then(function() {
+						l.vvlog("Directory traversal is complete. Result: " + result)
 						resolve(true)
 					});
 				}
+
 				fs.walk(dir)
 				.on('data', function (item) {
 					var stats = item.stats; // don't follow symlinks!
 					if (stats.isFile()) {
 						p = p.then(function() { 
-							l.vvlogd("> " +item.path)
 							return fn(item); 
 						})
 					}
@@ -122,20 +93,36 @@ return Promise.coroutine(function *() {
 						l.vlogd("skipping " + item.path)
 				})
 				.on('end', function () {
-					resolvall();
+					// logging doesn't work here :( ????
+					// l.vlog('********** Finished walking **************')
+					resolvall("OK");
 				})
 				.on('error', function(e) {
-					l.vlogw(_.niceStackTrace(e))
-					resolvall();
+					//l.vlogw("Failed to walk properly: \n" + _.niceStackTrace(e))
+					resolvall("Failed to walk properly: \n" + _.niceStackTrace(e));
 				})
 				return true;
 			});
 			yield walkerP;
+			yield p;
 		})();
 	};
 	
-	yield _walk(config.getSourcePath(), _buildFile);
+	l.log("Reading '"+context.getSourcePath()+"'...")
+	yield _walk(context.getSourcePath(), _loadFile);
 
+	// Now that all the files are loaded, we can do something about rendering them
+	for (var i=0; i<context.files.length; i++)
+	{
+		var fi = context.files[i];
+		fi.render(context); // this is not promisable
+		yield fi.save(context); // some files, eg partials and layouts might actually refuse to do this! (This is expected)
+	}
+
+	// Now, give the plugins a chance to actually write out some extra stuff based on what they need
+	yield plugin.saveAll(context);
+
+	l.log("Done");
 	return true;
 })();
 }

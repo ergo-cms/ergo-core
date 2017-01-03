@@ -21,7 +21,7 @@ module.exports = function(options) {
 	return Promise.try(function() {
 		options = options || {};
 
-		var config = require('./config').getConfigSync(options.working_dir, options);
-	
+		var context = require('./config').getContextSync(options.working_dir);
+		options = context.mergeRuntimeOptions(options);
 	});
 }

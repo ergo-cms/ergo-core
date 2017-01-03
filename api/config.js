@@ -14,6 +14,7 @@ var fs = require('ergo-utils').fs.extend(require('fs-extra'));
 var path = require('path');
 var Promise = require('bluebird');
 var parentFindFile = Promise.promisify(fs.parentFindFile);
+var Context = require('../lib/context');
 
 
 const CONFIG_NAME = 'config.ergo.js';
@@ -26,7 +27,9 @@ var config = {
 	, layouts_path: "source/_layouts"
 	, partials_path: "source/_partials"
 	, out_path: "output"
-	, plugins_path: "source/_plugins"  // these are generally links to 'node_modules' folder
+	, plugins_path: "plugins"  // these are generally links to 'node_modules' folder
+	, filename_space_char: '-'  // 'when we find this.html' we change it to this: 'when-we-find-this.html'
+
 	, runtime_options: {
 		  verbose: 0
 		, quiet: true
@@ -40,40 +43,14 @@ var config = {
 		, author: "Demo Author"			// the default author, if needed
 	}
 	
+	, plugins: "simpletag,textile,marked"
 	, plugin_options: {
 		  textile: { breaks: false }
-		, markdown: { ... }
+		, marked: { ... }
 	}
 }
 */
 
-function Config(config, config_path, options) {
-	this.config = config;
-	this.options = _.extend({}, config.runtime_options); // apply new 'default' runtime options
-	this.options = _.extend(this.options, options||{}); // apply new current
-	this.config_path = config_path;
-	this.base_path = path.dirname(config_path);
-}
-
-Config.prototype.constructor = Config;
-Config.prototype.getBasePath = function() { return this.base_path; };
-Config.prototype.getRelSourcePath = function() { return _fixupPathSep(this.config.source_path) || "source";  }
-Config.prototype.getRelLayoutsPath = function() { return  _fixupPathSep(this.config.layouts_path) || path.join(this.getRelSourcePath(), "_layouts"); };
-Config.prototype.getRelPartialsPath = function() { return  _fixupPathSep(this.config.partials_path) || path.join(this.getRelSourcePath(), "_partials"); };
-Config.prototype.getRelOutPath = function() { return  _fixupPathSep(this.config.out_path) ||  "output"; };
-
-Config.prototype.getSourcePath = function() { return path.join(this.base_path, this.getRelSourcePath()); }
-Config.prototype.getLayoutsPath = function() { return path.join(this.base_path, this.getRelLayoutsPath()); }
-Config.prototype.getPartialsPath = function() { return path.join(this.base_path, this.getRelPartialsPath()); }
-Config.prototype.getOutPath = function() { return path.join(this.base_path, this.getRelOutPath()); }
-
-
-function _fixupPathSep(str) { // make sure the path is pointing the right way for the platform (windows/'nix)
-	if (str)
-		return str.replace(/\\/g,path.sep).replace(/\//g,path.sep);
-	else 
-		return str;
-}
 
 function _findConfigFilenameSync(working_dir) { // returns null if not found
 	working_dir = working_dir || process.cwd();
@@ -87,8 +64,14 @@ function _findConfigFilename(working_dir) { // returns null if not found
 
 	return parentFindFile(working_dir, CONFIG_NAME);
 }
-function __getConfig(configjs, options) { // always syncronous, due to require(configjs)
-	options = options || {};
+
+var _singleton_context = null;
+
+function __getContext(configjs) { // always syncronous, due to require(configjs)
+	if (_singleton_context) {
+		l.logw("Attempt to find a new context, when one has already been created!")
+		return _singleton_context; // return the previously found context
+	}
 
 	if (!configjs) {
 		l.logw('Configuration file not found.')
@@ -96,7 +79,8 @@ function __getConfig(configjs, options) { // always syncronous, due to require(c
 	}
     try {
     	var config = require(configjs);
-	    return new Config(config, configjs, options);
+	    _singleton_context = new Context(config, configjs);
+	    return _singleton_context;
 	}
 	catch (e) {
 		l.loge("Cannot log config:\n"+_.niceStackTrace(e))
@@ -104,29 +88,25 @@ function __getConfig(configjs, options) { // always syncronous, due to require(c
 	}
 }
 
-function _getConfigSync(working_dir, options)
+function _getContextSync(working_dir)
 {
-	if (_.isObject(working_dir) && !_.isDefined(options)) {
-		// the OP used _getConfigSync({})
-		options = working_dir;
-		working_dir = undefined;
+	if (_singleton_context) {
+		l.logw("Attempt to find a new context, when one has already been created!")
+		return _singleton_context; // return the previously found context
 	}
 
-	return __getConfig(
-		_findConfigFilenameSync(working_dir),
-		options);
+	return __getContext(_findConfigFilenameSync(working_dir));
 }
-function _getConfig(working_dir, options) // async version
+function _getContext(working_dir) // async version
 {
-	if (_.isObject(working_dir) && !_.isDefined(options)) {
-		// the OP used _getConfigSync({})
-		options = working_dir;
-		working_dir = undefined;
+	if (_singleton_context) {
+		l.logw("Attempt to find a new context, when one has already been created!")
+		return Promise.resolve(_singleton_context);
 	}
 
 	return _findConfigFilename(working_dir)
 		.then(function(configjs) {
-			return __getConfig(configjs, options) // unfortunately, this is a sync' operation only
+			return __getContext(configjs) // unfortunately, this is a sync' operation only
 		})
 }
 
@@ -134,8 +114,8 @@ function _getConfig(working_dir, options) // async version
 
 
 var _config = {
-	  getConfigP: _getConfig // 'Promised' version
-	, getConfigSync: _getConfigSync
+	  getContextP: _getContext // 'Promised' version
+	, getContextSync: _getContextSync
 	, findConfigFilenameP: _findConfigFilename // 'Promised' version
 	, findConfigFilenameSync: _findConfigFilenameSync
 };
