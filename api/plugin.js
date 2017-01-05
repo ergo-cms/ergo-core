@@ -16,17 +16,16 @@ var Promise = require('bluebird');
 
 //l.color = l._colors.Dim+l._colors.FgRed;
 
-var _renderers = []; // yes. a Global. Live with it. I like using Goto and Jumps too. I like uneven indents and inconsistent strings. I like redunant semi colons; If you have a problem with this, go & look at the node-js scoping to see why this isn't really a global anyway!
-
+// Yes, globals. Live with it. I like using Goto and Jumps too. I like uneven indents and inconsistent strings. 
+// I like redundant semi colons; 
+var _renderers = []; 
 
 function Renderer(name, options) {
 	options = options || {};
 	if (_.isEmptyString(name)) 
-		throw new Error("Name is required when registering a plugin");
-	if (_.isEmptyString(options.extensions)) 
-		throw new Error("Extensions are required for plugin " + name);
+		throw new Error("A 'name' parameter is required when registering a plugin");
 	if (!_.isFunction(options.renderFn))
-		throw new Error("RenderFn is required for plugin " + name)
+		throw new Error("'renderFn' callback is required for plugin " + name)
 	this.name = name;
 	this.preRender = []; // an array of { name, priority }
 	this.postRender = []; // an array of { name, priority }
@@ -37,14 +36,15 @@ function Renderer(name, options) {
 	this.options = _.extend( {
 		  priority: 50
 		, binary: false
-		// , calcExtensionFn: function(origFilename) { return _plugin.DEF_EXTENSION; }
+		// , calcExtensionFn: function(origFilename) { return _api.DEF_EXTENSION; }
 		// , extensions: []
 		// , renderFn
 		// , reconfigureFn:
 		// , saveFn
 		}, options);
+	this.plugin_options = {}; // specfic options for the renderer. Set by 'plugin_options' in config.js
 
-	this.extensions = _.toRealArray(this.options.extensions, ",").map(_normaliseExt);
+	this.extensions = _.toRealArray(this.options.extensions || "", ",").map(_normaliseExt);
 	//this.render = this.options.renderFn;
 }
 
@@ -56,7 +56,7 @@ function __addToRenderList(list, name, priority) {
 		, priority: priority || 50
 	}
 	list.push(pre);
-	list.sort(function(a,b) { return a.priority - b.priority; });
+	list.sort(function(a,b) { return b.priority - a.priority; });
 }
 Renderer.prototype.addPreRenderer = function(name, priority) {
 	if (!_findRendererByName(name))
@@ -76,48 +76,65 @@ Renderer.prototype.addPostRenderer = function(name, priority) {
 Renderer.prototype.calcExtension = function(filename, currentExt) {
 	if (this.options.calcExtensionFn)
 		return this.options.calcExtensionFn.call(this, filename, currentExt);
-	return _plugin.DEF_EXTENSION; // by default, just return 'html'
+	return _api.DEF_EXTENSION; // by default, just return 'html'
 }
 
 Renderer.prototype.reconfigure = function(plugin_options) {
 	// this func is called just after it's file has been 'require' -ed. in _loadPlugin
 	l.vvlog("Renderer settings for '"+this.name+"' set to: " + l.dump(plugin_options));
-	plugin_options = plugin_options || {};
+	this.plugin_options = plugin_options || {};
 	if (this.options.reconfigureFn)
 		this.options.reconfigureFn.call(this, plugin_options);
 
 	return this; // for chaining
 };
 
-function __renderList(list, used, text) {
-	list.forEach(function(pre) {
-		var renderer = pre.renderer || _findRendererByName(pre.name);
-		if (!renderer)
-			throw new Error("Failed to ever find the renderer named '"+pre.name+"'");
-		if (!pre.renderer) //save it for later
-			pre.renderer = renderer;
-		if (used.indexOf(renderer)<0) {
-			text = renderer.render(text);
-			used.push(renderer); // only do this rendering once
-		}
-	});
-	return text;
+Renderer.prototype.render = function(fields, fileInfo, context) {
+	if (this.name!='dummy') l.vvlogd('Rendering ' + this.name)
+	fields.content = this.options.binary ? fields.content : fields.content.toString();
+	return this.options.renderFn.call(this, fields.content, fields, fileInfo, context);
 }
 
-Renderer.prototype.render = function(text, fileInfo, context) {
-	var used = [this];
+/*
+function __renderList(list, fields, fileInfo, context) {
+	list.forEach(function(obj) {
+		var renderer = obj.renderer || _findRendererByName(obj.name);
+		if (!renderer)
+			throw new Error("Failed to ever find the renderer named '"+obj.name+"'");
+		if (!obj.renderer) //save it for later
+			obj.renderer = renderer;
+		fields.content = renderer.render(fields.content, fields, fileInfo, context);
+	});
+}
+
+Renderer.prototype._renderNow = function(fields, fileInfo, context) {
+	this.options.renderFn.call(this, fields, fileInfo, context);
+}
+
+Renderer.prototype.preRender = function(fields, fileInfo, context) {
+	fields.content = this.options.binary ? fields.content : fields.content.toString();
 	if (this.preRender.length) {
-		l.vvlogd('Prerendering ' + this.name)
-		text = __renderList(this.preRender, used, text, fileInfo, context);
-	}
+		l.vvlogd('Prerendering ' + this.name);
+
+	__renderList(this.preRender, fields, fileInfo, context);
+	if (this.stage==STAGE_PRE)// we want this plugin to run in the preRender stage
+		this._renderNow(fields, fileInfo, context);
+}
+
+Renderer.prototype.render = function(fields, fileInfo, context) {
 	l.vvlogd('Rendering ' + this.name)
-	text = this.options.renderFn.call(this, this.options.binary ? text : text.toString(), fileInfo, context);
-	if (this.postRender.length) {
-		l.vvlogd('Postrendering ' + this.name)
-		text = __renderList(this.postRender, used, text, fileInfo, context);
-	}
-	return text;
-};
+	this.options.renderFn.call(this, fields, fileInfo, context);
+}
+
+Renderer.prototype.postRender = function(fields, fileInfo, context) {
+	if (this.postRender.length || this.stage==STAGE_POST)
+		l.vvlogd('Postrendering ' + this.name);
+
+	__renderList(this.postRender, fields, fileInfo, context);
+	if (this.stage==STAGE_POST)// we want this plugin to run in the postRender stage
+		this._renderNow(fields, fileInfo, context);
+}*/
+
 
 Renderer.prototype.save = function(context) {
 	if (this.options.saveFn)
@@ -125,7 +142,16 @@ Renderer.prototype.save = function(context) {
 	return Promise.resolve(true);
 };
 
-function _normaliseExt(ext) {
+
+
+
+
+
+
+
+
+
+function _normaliseExt(ext) { // we don't use '.' in our extension info... but some might leak in here and there
 	if (ext && ext.length && ext[0]=='.') 
 		return ext.substr(1);
 	return ext;
@@ -153,6 +179,23 @@ function _getExtensions(filename) {
 	return sections.slice(1); // the first one is the base filename, so ignore it, the rest are ext's
 }
 
+function _addRenderer(name, options) {
+	if (_findRendererByName(name))
+		throw new Error("Plugin already defined for " + name);
+	var newRenderer = new Renderer(name, options);
+	_renderers.push(newRenderer);
+
+	l.logd("Added renderer: " + name)
+	l.vvlogd("renderer "+name+" is: " + l.dump(newRenderer))
+
+	// makes find/searching consistent if sorted by priorty now
+	// NB: If someone goes & changes priority AFTER being created then this barfs.
+	//     We assume ppl will call resort() if needed. (eg AFTER a reconfigure)
+	_api.resort(); // which actually resorts the renderers.
+
+	return newRenderer;
+}
+
 function _buildRenderChain(filename, configObj) {
 	// various scenarios:
 	// blogpost.tex:    
@@ -163,7 +206,7 @@ function _buildRenderChain(filename, configObj) {
 	//		=> (save)
 	//			or, if less & minifier installed :
 	//		less => cssminify => (save)
-	// someimage.jpg:   <===== WE DON'T DO IMAGES ATM. WE ASSUME IT'S TEXT
+	// someimage.jpg:   <===== These are untested
 	//		=> (save)
 	//			or, if some watermarking thing present
 	//		watermark => (save)
@@ -172,7 +215,7 @@ function _buildRenderChain(filename, configObj) {
 
 	// So, we build a list starting from the 'left-most' extension
 	filename = path.basename(filename); // we're not interested in retaining folder structure of the original filename
-	l.vlogd("building render chain for '" + filename+ "'");
+	l.vvlogd("building render chain for '" + filename+ "'");
 	var basefilename = filename.substr(0, filename.indexOf('.'))
 	var exts = _getExtensions(filename);
 	// l.vvlogd("Extensions are: " + exts)
@@ -181,7 +224,7 @@ function _buildRenderChain(filename, configObj) {
 	// NB: 
 	// 		markdown & textile renderers BOTH use "simple" as a preRenderer, 
 	//			so "simple" is implicitly included here, when .tex is used.
-	var nextExt = exts.slice(-1) || _plugin.DEF_EXTENSION;
+	var nextExt = exts.slice(-1) || _api.DEF_EXTENSION;
 	for (var e=0; e<exts.length; e++) {
 		// find the best renderer for this extension
 		var ext = exts[e];
@@ -204,7 +247,28 @@ function _buildRenderChain(filename, configObj) {
 		}
 	}
 
-	return { renderers:chain, filename: basefilename+'.'+nextExt };
+
+	var ordered = [];
+	// Now we have the main 'renderers' required, we walk the complete render tree and generate an in-order list
+	function _walk(r) {
+		function _fetchAndWalk(obj) { // obj is { name, priority }
+			var renderer = obj.renderer || _findRendererByName(obj.name);
+			if (!renderer)
+				throw new Error("Failed to ever find the renderer named '"+obj.name+"'");
+			if (!obj.renderer) //save it for later
+				obj.renderer = renderer;
+			_walk(renderer);
+		}
+		// walk the pre-render list
+		r.preRender.forEach(_fetchAndWalk)
+		ordered.push(r); // finally push this renderer
+		// walk the post-render list
+		r.postRender.forEach(_fetchAndWalk)
+	}
+	chain.forEach(_walk);
+
+	l.vlogd("Render chain for '" + filename+ "' is: " + l.dump(ordered.map(function(r) { return r.name; })));
+	return { renderers:ordered, filename: basefilename+'.'+nextExt };
 }
 
 function _reconfigurePlugin(renderer, context) {
@@ -216,7 +280,31 @@ function _reconfigurePlugin(renderer, context) {
 	}
 	return renderer;
 }
+
+function _loadDefaultPlugins(context) {
+	var default_plugins = [ // the order of these is not important... but if they're not in this order, a few warnings will appear
+			  _api.RENDERER_TAG
+		    , _api.RENDERER_TEMPLATE_MAN
+		    , _api.RENDERER_HEADER_ADD
+		    , _api.RENDERER_HEADER_READ
+		    , _api.RENDERER_TEXTILE
+		    , _api.RENDERER_MARKDOWN
+			];
+	l.vlog("Loading default plugins...");
+	var p = [];
+	default_plugins.forEach(function(def_name) {				
+		p.push(_api.loadPlugin(def_name, context));
+	});
+	return p;
+}
+
+
 function _loadplugin(name, context) {
+
+	if (name=="{default}" || name=="default")
+		return _loadDefaultPlugins(context);
+
+	l.vlog("Loading plugin '"+name+"'");
 	var userPath = context.getPluginsPath();
 	var renderer = _findRendererByName(name);
 	if (!!renderer) {
@@ -227,6 +315,7 @@ function _loadplugin(name, context) {
 		// Other problems:
 		// user might specify in config:
 		// plugins: "default,textile", which will load the textile plugin again!
+		l.vlogw("Plugin '"+name+"' has already been loaded")
 		return renderer; // already loaded & configured.
 	}
 
@@ -237,7 +326,7 @@ function _loadplugin(name, context) {
 		}
 		catch (e) {
 			// we expect to fail to load plugins... but generate a *real* error if there is a file in there
-			if (fs.fileExistsSync(userLib)) {
+			if (fs.fileExistsSync(userLib+'.js')) {
 				l.loge("Error loading plugin '" + name+ "' in '"+userPath+"':\n"+_.niceStackTrace(e))
 				return null;
 			}
@@ -249,16 +338,17 @@ function _loadplugin(name, context) {
 
 	if (!renderer) {
 		// else fall thru to trying to load it from our in-built plugins. 
-		var inbuiltLib = path.join('../lib/plugins', name);
+		var inbuiltLib = path.join(path.dirname(__dirname), 'lib','plugins', name);
 		try {
 			require(inbuiltLib)
 		}
 		catch (e) {
 			// we expect to fail to load plugins... but generate a *real* error if there is a file in there
-			if (!fs.fileExistsSync(userLib)) 
-				l.loge("Cannot find plugin '" + name+ "' in '"+userPath+"' or from internal libraries")
+			if (!fs.fileExistsSync(inbuiltLib+'.js')) 
+				l.loge("Cannot find plugin '" + name+ "' in '"+userPath+"' or from internal library")
 			else
 				l.loge("Error loading plugin '"+name+"' from internal library:\n" + _.niceStackTrace(e))
+			throw e;
 		}
 		renderer = _findRendererByName(name);
 	}
@@ -268,38 +358,100 @@ function _loadplugin(name, context) {
 
 }
 
-function _saveAllPlugins(context) {
+
+/*
+### Race Conditions
+
+There are possible race conditions. eg:
+
+* blog.tem.html, followed by
+* blog/blog post.md
+
+The render chain for both is:
+
+* template_man, simpletag
+* header_read, header_add, marked, template_man, simpletag
+
+However, if we render each in order, then `blog.tem.html` will try to render before `header_add` has been reached in the other. 
+There are 2 solutions to this:
+
+1. 'right align' all rendering, padding with a 'dummy_render', such that the render chains are:
+ * dummy       , dummy       , dummy       , template_man, simpletag
+ * header_read , header_add  , marked      , template_man, simpletag
+        (Which just happens to work, in this case)
+2. A more tricky 'alignment' such that all eg 'template_man', will be rendered at the same time
+
+Option 1. has been chosen, for now...aka _rightAlignRenderers():
+*/	
+function _rightAlignRenderers(context) {
+	// find the length of the longest chain.
+	var longest = 0;
+	for (var i=0; i<context.files.length; i++)
+	{
+		var fi = context.files[i];
+		longest = Math.max(longest, fi.renderers.length);
+	}
+	// inject the dummy renderer to the left of the existing renderers
+	for (var i=0; i<context.files.length; i++)
+	{
+		var fi = context.files[i];
+		if (fi.renderers.length<longest)
+			fi.renderers = (new Array(longest - fi.renderers.length)).fill(dummy_renderer).concat(fi.renderers);
+	}
+}
+
+
+function _saveAll(context) {
 	return Promise.coroutine( function *() {
+		for (var i=0; i<context.files.length; i++)
+		{
+			var fi = context.files[i];
+			yield fi.save(context); 
+		}
+
 		for (var i=0; i<_renderers.length; i++) {
 			yield _renderers[i].save(context);
 		}
+		return true;
 	})();
 }
 
-var _plugin = {
+function _renderAll(context) {
+	return Promise.coroutine( function *() {
+		_rightAlignRenderers(context);
+
+		var keep_rendering = true;
+		l.vlog("Rendering...")
+		while(keep_rendering) {
+			keep_rendering = false;
+			for (var i=0; i<context.files.length; i++)
+			{
+				var fi = context.files[i];
+				if (fi.renderNext(context))
+					keep_rendering = true;
+			}
+		}
+		l.vlog("Saving...")
+		yield _saveAll(context);
+		return true;
+	})();
+}	
+
+
+var _api = {
 	// some common names
-	  DEF_EXTENSION: "html"
-	, RENDERER_TAG: "tag" // simple tag renderer. If using moustache, use this as the name to inject cleanly
-    , RENDERER_TEXTILE: "textile" // only here, because it's inbuilt & someone might have a different library to swap in
-    , RENDERER_MARKDOWN: "marked" // only here, because it's inbuilt & someone might have a different library to swap in
+	  DEF_EXTENSION: "html" // This CAN be changed by configuration at run-time, through the config.default_extension property.
+
+	// These render names only here, because it's inbuilt & someone might have a different library to swap in
+	, RENDERER_TAG: "simpletag" 
+    , RENDERER_TEMPLATE_MAN: "template_man" 
+    , RENDERER_HEADER_READ:  "header_read" 
+    , RENDERER_HEADER_ADD:  "header_add" 
+    , RENDERER_TEXTILE: "textile"
+    , RENDERER_MARKDOWN: "marked"
 
 	//
-	, addRenderer: function(name, options) {
-		if (_findRendererByName(name))
-			throw new Error("Plugin already defined for " + name);
-		var newRenderer = new Renderer(name, options);
-		_renderers.push(newRenderer);
-
-		l.logd("Added renderer: " + name)
-		l.vvlogd("renderer "+name+" is: " + l.dump(newRenderer))
-
-		// makes find/searching consistent if sorted by priorty now
-		// NB: If someone goes & changes priority AFTER being created then this barfs.
-		//     We assume ppl will call resort() if needed. (eg AFTER a reconfigure)
-		_plugin.resort(); // which actually resorts the renderers.
-
-		return newRenderer;
-	  }
+	, addRenderer: _addRenderer
 	, removeRenderer: function(name) {
  		var i = _findRendererByNameIndex(name);
  		if (i<0) return null;
@@ -307,18 +459,38 @@ var _plugin = {
  		_renderers.splice(i,1)
  		return prevRenderer;
 	  }
-	, getRenderer: function(name) {
-		return _findRendererByName(name);
-	  }
-	, getRenderers: function() { 
-		return _renderers.slice(); // return a *copy* 
-	 }
+	//, getRenderer: function(name) {
+	//	return _findRendererByName(name);
+	//  }
+	//, getRenderers: function() { 
+	//	return _renderers.slice(); // return a *copy* 
+	//}
 	, resort: function() {
-		_renderers.sort(function(a,b) { return a.__priority - b.__priority; }); 
+		_renderers.sort(function(a,b) { return b.priority - a.priority; }); 
 	}
+	, changeDefaultExtension: function(defExt) {
+    	var defExt = _normaliseExt(defExt);
+		l.log("Changing default Extension: " + defExt)
+    	if (!_.isEmptyString(defExt)) {
+    		l.vlog("Changed default extension to '" +defExt+ "'")
+    		_api.DEF_EXTENSION = defExt;
+    		if (_renderers.length) {
+				l.logw("Changed default extension after plugins have loaded. Expect the unexpected");
+				return -1;
+    		}
+    		return true;
+    	}
+    	return false;
+
+	  }
 	, buildRenderChain: _buildRenderChain
 	, loadPlugin: _loadplugin
-	, saveAll: _saveAllPlugins
+
+	, renderAll: _renderAll
 };
 
-module.exports = _plugin;
+var dummy_renderer = _api.addRenderer("dummy", { priority:100, renderFn: function(text) { return text; } } );
+
+
+module.exports = _api;
+

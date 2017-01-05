@@ -17,6 +17,7 @@ var parentFindFile = Promise.promisify(fs.parentFindFile);
 var Context = require('../lib/context');
 
 
+
 const CONFIG_NAME = 'config.ergo.js';
 
 /*
@@ -29,12 +30,6 @@ var config = {
 	, out_path: "output"
 	, plugins_path: "plugins"  // these are generally links to 'node_modules' folder
 	, filename_space_char: '-'  // 'when we find this.html' we change it to this: 'when-we-find-this.html'
-
-	, runtime_options: {
-		  verbose: 0
-		, quiet: true
-		...
-	}
 
 	, default_properties: {
 		  site_url: "http://demosite.example.com"
@@ -50,6 +45,53 @@ var config = {
 	}
 }
 */
+
+
+
+var default_config = {
+	  source_path: "source"
+	//, layouts_path: "source/_layouts"
+	//, partials_path: "source/_partials"
+	//, out_path: "output"
+	//, plugins_path: "plugins"  // these are generally links to 'node_modules' folder
+	, filename_space_char: '-'  // 'when we find this.html' we change it to this: 'when-we-find-this.html'
+
+	//, log_options: {
+	//	default:{verbose:0,quiet:false}// & the super-secret 'debug'
+	//}
+
+	, default_extension: "html" // when changed by a user, api/plugin.DEF_EXTENISON is also updated 
+	, exclude : "" // also excludes out,partials & layout dirs & config.js as needed
+
+	, plugins: "default" // == simpletag,textile,marked
+	//, plugin_options: {
+	//	textile: {breaks:true}
+	//  }
+
+	, date_format : {// "dddd, mmmm dS, yyyy, h:MM:ss TT"
+		day : "d",
+		month: "mmm",
+		year: "yyyy",
+		time: "hh:MM",
+		full: "d mmm yyyy",
+	  }
+
+	, default_post_type: 'post'
+	, post_types: {
+		// ensure that this section is present
+	}
+
+	// shorten_field: "{more}",
+	// shorten_divider: "<a href=\"/{seo}\" class=\"more\">More &hellip;</a>"
+	//shorten_type: "markdown"
+};
+
+
+function _normaliseExt(ext) { // we don't use '.' in our extension info... but some might leak in here and there
+	if (ext && ext.length && ext[0]=='.') 
+		return ext.substr(1);
+	return ext;
+}
 
 
 function _findConfigFilenameSync(working_dir) { // returns null if not found
@@ -78,7 +120,11 @@ function __getContext(configjs) { // always syncronous, due to require(configjs)
 		return null;
 	}
     try {
-    	var config = require(configjs);
+    	var config = _.extend({}, default_config, require(configjs));
+
+		var plugin = require('./plugin');
+		plugin.changeDefaultExtension(config.default_extension)
+    	 
 	    _singleton_context = new Context(config, configjs);
 	    return _singleton_context;
 	}

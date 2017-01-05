@@ -13,12 +13,12 @@ var _  = require('ergo-utils')._;
 var fs = require('ergo-utils').fs.extend(require('fs-extra'));
 var path = require('path');
 var Promise = require('bluebird');
-var plugin = require('./plugin')
+var plugin_api = require('./plugin')
 var context = require('../lib/context');
 var FileInfo = require('../lib/fileinfo');
 
 // promisify a few funcs we need
-"dirExists,ensureDir,readFile,writeFile".split(',').forEach(function(fn) {
+"dirExists,ensureDir,emptyDir,emptyDir,readFile,writeFile".split(',').forEach(function(fn) {
 	fs[fn] = Promise.promisify(fs[fn])
 });
 
@@ -37,20 +37,13 @@ module.exports = function(options) {
 return Promise.coroutine(function *() {
 	options = options || {};
 	var context = require('./config').getContextSync(options.working_dir);
-	options = context.mergeRuntimeOptions(options);
+	context.mergeRuntimeOptions(options);
+	_.extend(options, context.config.runtime_options)
 
 	// load the default plugins, markdown, textile and simple
 	var plugins_to_load = context.config.plugins || "{default}"
-	l.logd("Plugins to load: " + plugins_to_load);
 	_.toRealArray(plugins_to_load, ',').forEach(function(name) {
-		if (name=="{default}" || name=="default")
-		{
-			plugin.loadPlugin("simpletag", context)
-			plugin.loadPlugin("textile", context)
-			plugin.loadPlugin("marked", context)
-		}
-		else
-			plugin.loadPlugin(name, context)
+		plugin_api.loadPlugin(name, context)
 	});
 
 	l.vvlogd("Context is:\n"+l.dump(context));
@@ -60,6 +53,9 @@ return Promise.coroutine(function *() {
 
 	// (We'll deal with missing layouts/partials as they arise, since they may not actually be needed)
 	yield fs.ensureDir(context.getOutPath());
+
+	if (options.clean)
+		yield fs.emptyDir(context.getOutPath());
 
 	var _loadFile = function(item) {
 		return context.addFile(item.path, item.stats)
@@ -89,7 +85,7 @@ return Promise.coroutine(function *() {
 							return fn(item); 
 						})
 					}
-					else
+					else if (!stats.isDirectory())
 						l.vlogd("skipping " + item.path)
 				})
 				.on('end', function () {
@@ -112,15 +108,7 @@ return Promise.coroutine(function *() {
 	yield _walk(context.getSourcePath(), _loadFile);
 
 	// Now that all the files are loaded, we can do something about rendering them
-	for (var i=0; i<context.files.length; i++)
-	{
-		var fi = context.files[i];
-		fi.render(context); // this is not promisable
-		yield fi.save(context); // some files, eg partials and layouts might actually refuse to do this! (This is expected)
-	}
-
-	// Now, give the plugins a chance to actually write out some extra stuff based on what they need
-	yield plugin.saveAll(context);
+	yield plugin_api.renderAll(context);
 
 	l.log("Done");
 	return true;

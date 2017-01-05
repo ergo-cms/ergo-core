@@ -18,6 +18,7 @@
   "homepage": "https://github.com/ergo-cms/ergo-core#readme",
   "dependencies": {
     "bluebird": "^3.4.7",
+    "dateformat": "^2.0.0",
     "ergo-core": "latest",
     "ergo-utils": "latest",
     "fs-extra": "^1.0.0",
