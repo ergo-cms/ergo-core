@@ -300,7 +300,10 @@ function _loadDefaultPlugins(context) {
 
 
 function _loadplugin(name, context) {
-
+	if (!dummy_renderer) {
+		// add the dummy renderer on the first plugin load
+		dummy_renderer = _api.addRenderer("dummy", { priority:100, renderFn: function(text) { return text; } } );		
+	}
 	if (name=="{default}" || name=="default")
 		return _loadDefaultPlugins(context);
 
@@ -383,6 +386,9 @@ There are 2 solutions to this:
 
 Option 1. has been chosen, for now...aka _rightAlignRenderers():
 */	
+
+var dummy_renderer = null;
+
 function _rightAlignRenderers(context) {
 	// find the length of the longest chain.
 	var longest = 0;
@@ -470,8 +476,8 @@ var _api = {
 	}
 	, changeDefaultExtension: function(defExt) {
     	var defExt = _normaliseExt(defExt);
-		l.log("Changing default Extension: " + defExt)
-    	if (!_.isEmptyString(defExt)) {
+		l.vlog("Changing default Extension: " + defExt)
+    	if (!_.isEmptyString(defExt) && defExt!=_api.DEF_EXTENSION) {
     		l.vlog("Changed default extension to '" +defExt+ "'")
     		_api.DEF_EXTENSION = defExt;
     		if (_renderers.length) {
@@ -488,8 +494,6 @@ var _api = {
 
 	, renderAll: _renderAll
 };
-
-var dummy_renderer = _api.addRenderer("dummy", { priority:100, renderFn: function(text) { return text; } } );
 
 
 module.exports = _api;
