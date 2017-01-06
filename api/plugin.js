@@ -259,11 +259,13 @@ function _buildRenderChain(filename, configObj) {
 				obj.renderer = renderer;
 			_walk(renderer);
 		}
-		// walk the pre-render list
-		r.preRender.forEach(_fetchAndWalk)
-		ordered.push(r); // finally push this renderer
-		// walk the post-render list
-		r.postRender.forEach(_fetchAndWalk)
+		if (ordered.indexOf(r)<0) { // check that we've already not added this renderer.
+			// walk the pre-render list
+			r.preRender.forEach(_fetchAndWalk)
+			ordered.push(r); // finally push this renderer
+			// walk the post-render list
+			r.postRender.forEach(_fetchAndWalk)
+		}
 	}
 	chain.forEach(_walk);
 
@@ -283,10 +285,10 @@ function _reconfigurePlugin(renderer, context) {
 
 function _loadDefaultPlugins(context) {
 	var default_plugins = [ // the order of these is not important... but if they're not in this order, a few warnings will appear
-			  _api.RENDERER_TAG
-		    , _api.RENDERER_TEMPLATE_MAN
-		    , _api.RENDERER_HEADER_ADD
+		      _api.RENDERER_HEADER_ADD
 		    , _api.RENDERER_HEADER_READ
+			,  _api.RENDERER_TAG
+		    , _api.RENDERER_TEMPLATE_MAN
 		    , _api.RENDERER_TEXTILE
 		    , _api.RENDERER_MARKDOWN
 			];
