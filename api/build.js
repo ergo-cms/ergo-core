@@ -22,23 +22,14 @@ var FileInfo = require('../lib/fileinfo');
 	fs[fn] = Promise.promisify(fs[fn])
 });
 
-/*
-Options can be:
-
-{
-	step3: profit
-}
-
-*/
-
 
 
 module.exports = function(options) {
 return Promise.coroutine(function *() {
+	l.log("Building...")
 	options = options || {};
 	var context = require('./config').getContextSync(options.working_dir);
 	context.mergeRuntimeOptions(options);
-	_.extend(options, context.config.runtime_options)
 
 	// load the default plugins, markdown, textile and simple
 	var plugins_to_load = context.config.plugins || "{default}"
