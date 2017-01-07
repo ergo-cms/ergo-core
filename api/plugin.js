@@ -95,46 +95,6 @@ Renderer.prototype.render = function(fields, fileInfo, context) {
 	return this.options.renderFn.call(this, fields.content, fields, fileInfo, context);
 }
 
-/*
-function __renderList(list, fields, fileInfo, context) {
-	list.forEach(function(obj) {
-		var renderer = obj.renderer || _findRendererByName(obj.name);
-		if (!renderer)
-			throw new Error("Failed to ever find the renderer named '"+obj.name+"'");
-		if (!obj.renderer) //save it for later
-			obj.renderer = renderer;
-		fields.content = renderer.render(fields.content, fields, fileInfo, context);
-	});
-}
-
-Renderer.prototype._renderNow = function(fields, fileInfo, context) {
-	this.options.renderFn.call(this, fields, fileInfo, context);
-}
-
-Renderer.prototype.preRender = function(fields, fileInfo, context) {
-	fields.content = this.options.binary ? fields.content : fields.content.toString();
-	if (this.preRender.length) {
-		l.vvlogd('Prerendering ' + this.name);
-
-	__renderList(this.preRender, fields, fileInfo, context);
-	if (this.stage==STAGE_PRE)// we want this plugin to run in the preRender stage
-		this._renderNow(fields, fileInfo, context);
-}
-
-Renderer.prototype.render = function(fields, fileInfo, context) {
-	l.vvlogd('Rendering ' + this.name)
-	this.options.renderFn.call(this, fields, fileInfo, context);
-}
-
-Renderer.prototype.postRender = function(fields, fileInfo, context) {
-	if (this.postRender.length || this.stage==STAGE_POST)
-		l.vvlogd('Postrendering ' + this.name);
-
-	__renderList(this.postRender, fields, fileInfo, context);
-	if (this.stage==STAGE_POST)// we want this plugin to run in the postRender stage
-		this._renderNow(fields, fileInfo, context);
-}*/
-
 
 Renderer.prototype.save = function(context) {
 	if (this.options.saveFn)
@@ -269,7 +229,7 @@ function _buildRenderChain(filename, configObj) {
 	}
 	chain.forEach(_walk);
 
-	l.vlogd("Render chain for '" + filename+ "' is: " + l.dump(ordered.map(function(r) { return r.name; })));
+	l.vvlog("Render chain for '" + filename+ "' is: " + l.dump(ordered.map(function(r) { return r.name; })));
 	return { renderers:ordered, filename: basefilename+'.'+nextExt };
 }
 
@@ -285,7 +245,7 @@ function _reconfigurePlugin(renderer, context) {
 
 function _loadDefaultPlugins(context) {
 	var default_plugins = [ // the order of these is not important... but if they're not in this order, a few warnings will appear
-		      _api.RENDERER_HEADER_ADD
+		      _api.RENDERER_ADD_DATA
 		    , _api.RENDERER_HEADER_READ
 			,  _api.RENDERER_TAG
 		    , _api.RENDERER_TEMPLATE_MAN
@@ -454,7 +414,7 @@ var _api = {
 	, RENDERER_TAG: "simpletag" 
     , RENDERER_TEMPLATE_MAN: "template_man" 
     , RENDERER_HEADER_READ:  "header_read" 
-    , RENDERER_HEADER_ADD:  "header_add" 
+    , RENDERER_ADD_DATA:  "add_data" 
     , RENDERER_TEXTILE: "textile"
     , RENDERER_MARKDOWN: "marked"
 
