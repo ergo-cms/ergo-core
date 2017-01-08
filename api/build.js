@@ -16,12 +16,67 @@ var Promise = require('bluebird');
 var plugin_api = require('./plugin')
 var context = require('../lib/context');
 var FileInfo = require('../lib/fileinfo');
+const ignore = require('ignore');
 
 // promisify a few funcs we need
 "dirExists,ensureDir,emptyDir,emptyDir,readFile,writeFile".split(',').forEach(function(fn) {
 	fs[fn] = Promise.promisify(fs[fn])
 });
 
+function _load_ergoignoreFilter(dir) { // loads the file, if found OR returns an empty one
+	const fname = '.ergoignore';
+	return fs
+		.readFile(path.join(dir, fname ), 'utf8')
+		.catch(function(err) {
+			l.vvlog(".ergoignore not found in '"+dir+"'");
+			return ''; // ignore missing file, etc.
+		})
+		.then(function(data) {
+			if (data.length>0)
+				l.vlog("Loaded ignore file: '"+path.join(dir,fname)+"'");
+			return ignore().add([fname]).add(data.toString()).createFilter();
+		});
+}
+
+
+function _walk(dir, filterFn, fn) {
+return Promise.coroutine(function *() {
+	var p = Promise.resolve();
+	var walkerP = new Promise(function(resolve) { // I'd love to know how to not use the promise anti-pattern here!
+
+		function resolvall(result) {
+			p.then(function() {
+				l.vvlog("Directory traversal is complete. Result: " + result)
+				resolve(true)
+			});
+		}
+
+		fs.walk(dir, {filter:filterFn})
+		.on('data', function (item) {
+			var stats = item.stats; // don't follow symlinks!
+			if (stats.isFile()) {
+				p = p.then(function() { 
+					return fn(item); 
+				})
+			}
+			else if (!stats.isDirectory())
+				l.vlogd("skipping " + item.path)
+		})
+		.on('end', function () {
+			// logging doesn't work here :( ????
+			// l.vlog('********** Finished walking **************')
+			resolvall("OK");
+		})
+		.on('error', function(e) {
+			//l.vlogw("Failed to walk properly: \n" + _.niceStackTrace(e))
+			resolvall("Failed to walk properly: \n" + _.niceStackTrace(e));
+		})
+		return true;
+	});
+	yield walkerP;
+	yield p;
+})();
+};
 
 
 module.exports = function(options) {
@@ -45,8 +100,21 @@ return Promise.coroutine(function *() {
 	// (We'll deal with missing layouts/partials as they arise, since they may not actually be needed)
 	yield fs.ensureDir(context.getOutPath());
 
-	if (options.clean)
-		yield fs.emptyDir(context.getOutPath());
+	if (options.clean) {
+		//yield fs.emptyDir(context.getOutPath()); Removed. We know obey .ergoignore
+
+		var _destFilterFn = yield _load_ergoignoreFilter(context.getOutPath())
+		var _destIgnoreFn = function(item) { 
+			var relItem = path.relative(context.getOutPath(), item)
+			return _destFilterFn(relItem);
+		}
+		var _deleteFile = function(item) {
+			l.vlog("Removing '"+item.path+"'...");
+			fs.remove(item.path);
+		}
+		l.log("Cleaning '"+context.getOutPath()+"'...")
+		yield _walk(context.getOutPath(), _destIgnoreFn, _deleteFile);
+	}
 
 	var _loadFile = function(item) {
 		return context.addFile(item.path, item.stats)
@@ -56,47 +124,14 @@ return Promise.coroutine(function *() {
 	}
 
 
-	var _walk = function(dir, fn) {
-		return Promise.coroutine(function *() {
-			var p = Promise.resolve();
-			var walkerP = new Promise(function(resolve) { // I'd love to know how to not use the promise anti-pattern here!
-
-				function resolvall(result) {
-					p.then(function() {
-						l.vvlog("Directory traversal is complete. Result: " + result)
-						resolve(true)
-					});
-				}
-
-				fs.walk(dir)
-				.on('data', function (item) {
-					var stats = item.stats; // don't follow symlinks!
-					if (stats.isFile()) {
-						p = p.then(function() { 
-							return fn(item); 
-						})
-					}
-					else if (!stats.isDirectory())
-						l.vlogd("skipping " + item.path)
-				})
-				.on('end', function () {
-					// logging doesn't work here :( ????
-					// l.vlog('********** Finished walking **************')
-					resolvall("OK");
-				})
-				.on('error', function(e) {
-					//l.vlogw("Failed to walk properly: \n" + _.niceStackTrace(e))
-					resolvall("Failed to walk properly: \n" + _.niceStackTrace(e));
-				})
-				return true;
-			});
-			yield walkerP;
-			yield p;
-		})();
-	};
 	
 	l.log("Reading '"+context.getSourcePath()+"'...")
-	yield _walk(context.getSourcePath(), _loadFile);
+	var _sourceFilterFn = yield _load_ergoignoreFilter(context.getSourcePath())
+	var _sourceUseFn = function(item) {
+		var relItem = path.relative(context.getSourcePath(), item)
+		return _sourceFilterFn(relItem);
+	}
+	yield _walk(context.getSourcePath(), _sourceUseFn, _loadFile);
 
 	// Now that all the files are loaded, we can do something about rendering them
 	yield plugin_api.renderAll(context);
