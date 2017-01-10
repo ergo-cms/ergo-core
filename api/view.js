@@ -13,7 +13,7 @@
 var l  = require('ergo-utils').log.module('ergo-api-view');
 var _  = require('ergo-utils')._;
 var fs = require('ergo-utils').fs.extend(require('fs-extra'));
-var watch_api = require('./watch')._watch;
+var watch_api = require('./watch');
 var Promise = require('bluebird')
 var http = require("http"),
 	url = require("url"),
@@ -114,8 +114,13 @@ module.exports = function(options) {
 
 		if (_.isDefined(options['watch']))
 		{
-			watch_api(options, context);
+			watch_api.watch(options, context);
 			l.logd("Watcher ready")
+		} 
+		else if (_.isDefined(options['build'])) // else because the watch_api takes care of it otherwise
+		{
+			l.log("Building...")
+			watch_api.build(options, context);
 		}
 		return _serveWeb(options, context);
 	});

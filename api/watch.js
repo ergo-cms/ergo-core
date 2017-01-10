@@ -15,6 +15,8 @@ var _watcher = null;
 
 function _rebuild(options, context) {
 	l.vlog("Changes detected. Rebuilding...");
+	options = _.extend({working_dir: context.getBasePath()
+		}, options)
 	var execFile = Promise.promisify(require('child_process').execFile);
 
 	var cmd = process.argv.slice(0,1).join(''); // this is the node command that was used to execute us (HOPEFULLY)
@@ -22,7 +24,9 @@ function _rebuild(options, context) {
 		process.argv.slice(1, 2).join(''), // this is the location of ergo-cli that was run
 		'build', 
 		'--working_dir='+options.working_dir];
-		
+	if (options.clean)
+		args.push('--clean')
+	
 	l.vvlog("Running '"+cmd+"' with args: " + l.dump(args))
 	return execFile(cmd, args)					
 		.catch(function(err) {
@@ -73,6 +77,8 @@ function _watch(options, context) {
 	var build_options = {
 		working_dir: context.getBasePath()
 	};
+	if (options.clean)
+		build_options.clean = true;
 
 	var _changeTimeout = null;
 	var _changesWaiting = 0;
@@ -99,9 +105,11 @@ function _watch(options, context) {
 					}
 				});
 		}
-
-
 	}
+
+	if (options.build)
+		_changeTimeout = setTimeout(_rebuildTimerCallback, options.watch_delay);
+
 
 	options.watch_dir = path.resolve(options.watch_dir);
 	l.log("Starting watch on: " + options.watch_dir);
@@ -135,5 +143,9 @@ function _watch(options, context) {
 		return _watch(options, context);
 	});
 };
-module.exports._watch = _watch;
+
+// add facility to call without generating a new context
+module.exports.watch = _watch;
+module.exports.build = _rebuild;
+
 
