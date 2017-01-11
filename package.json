@@ -23,7 +23,7 @@
     "ergo-utils": "latest",
     "fs-extra": "^1.0.0",
     "ignore": "^3.2.0",
-    "jsinf": "^0.2.2",
+    "jsinf": "^1.0.2",
     "marked": "^0.3.6",
     "textile-js": "^2.0.1"
   },
