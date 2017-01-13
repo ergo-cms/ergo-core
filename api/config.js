@@ -27,6 +27,8 @@ var config = {
 	  source_path: "source"
 	, layouts_path: "source/_layouts"
 	, partials_path: "source/_partials"
+	, themes_path: "source/_themes"
+	, theme: 'default_skel'  // this is a subfolder of 'themes_path'
 	, out_path: "output"
 	, plugins_path: "plugins"  // these are generally links to 'node_modules' folder
 	, filename_space_char: '-'  // 'when we find this.html' we change it to this: 'when-we-find-this.html'
@@ -52,6 +54,8 @@ var default_config = {
 	  source_path: "source"
 	//, layouts_path: "source/_layouts"
 	//, partials_path: "source/_partials"
+	//, themes_path: "source/_themes"
+	//, theme: 'default_skel'  // this is a subfolder of 'themes_path'
 	//, out_path: "output"
 	//, plugins_path: "plugins"  // these are generally links to 'node_modules' folder
 	, filename_space_char: '-'  // 'when we find this.html' we change it to this: 'when-we-find-this.html'
@@ -61,7 +65,7 @@ var default_config = {
 	//}
 
 	, default_extension: "html" // when changed by a user, api/plugin.DEF_EXTENISON is also updated 
-	, exclude : "" // also excludes out,partials & layout dirs & config.js as needed
+	, exclude : "" // also excludes out,partials, themes & layout dirs & config.js as needed
 
 	, plugins: "default" // == simpletag,textile,marked
 	//, plugin_options: {
@@ -129,7 +133,7 @@ function __getContext(configjs) { // always syncronous, due to require(configjs)
 	    return _singleton_context;
 	}
 	catch (e) {
-		l.loge("Cannot log config:\n"+_.niceStackTrace(e))
+		l.loge(_.niceStackTrace(e))
 		throw e;
 	}
 }

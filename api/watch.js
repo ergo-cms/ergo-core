@@ -38,29 +38,13 @@ function _rebuild(options, context) {
 				return false; // from previous catch()
 			}
 
-/*
-  			if (response.stderr && response.stderr.length>0) 
-  				l.loge("Error converting '"+_src+"': "+ response.stderr); // BUT DONT throw an error & allow continuation
 
-  			if (!fileExists(_dst)) {
-				l.logw("Output is empty for '"+_dst+"'. Please check '"+_src+"'");
-				return false; // didn't create output file!
-  			}
-*/
+  			if (response.stderr && response.stderr.length>0) 
+  				l.loge("Errors when building: "+ response.stderr); // BUT DONT throw an error & allow continuation
+
   			l.log("Build complete " + response);
   			return true;
   		});
-
-	/*
-	return build_api(options)
-	.then(function(result) {
-		l.vlog("Build complete: " + result);
-		return true;
-	})
-	.catch(function(err) {
-		l.loge("Error when building:\n" + _.niceStackTrace(err));
-		return false;
-	})*/
 }
 
 function _watch(options, context) {

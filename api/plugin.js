@@ -229,8 +229,11 @@ function _buildRenderChain(filename, configObj) {
 	}
 	chain.forEach(_walk);
 
+	var finalFilename = filename;
+	if (ordered.length>0) // only futz with the 'extensions' if we have a valid render chain...? Even then, this might NOT be a good idea!
+		finalFilename = basefilename+'.'+nextExt;
 	l.vvlog("Render chain for '" + filename+ "' is: " + l.dump(ordered.map(function(r) { return r.name; })));
-	return { renderers:ordered, filename: basefilename+'.'+nextExt };
+	return { renderers:ordered, filename: finalFilename };
 }
 
 function _reconfigurePlugin(renderer, context) {
