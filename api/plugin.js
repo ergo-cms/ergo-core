@@ -414,7 +414,7 @@ var _api = {
 	  DEF_EXTENSION: "html" // This CAN be changed by configuration at run-time, through the config.default_extension property.
 
 	// These render names only here, because it's inbuilt & someone might have a different library to swap in
-	, RENDERER_TAG: "simpletag" 
+	, RENDERER_TAG: "usematch" 
     , RENDERER_TEMPLATE_MAN: "template_man" 
     , RENDERER_HEADER_READ:  "header_read" 
     , RENDERER_ADD_DATA:  "add_data" 

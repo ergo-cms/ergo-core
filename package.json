@@ -25,7 +25,8 @@
     "ignore": "^3.2.0",
     "jsinf": "latest",
     "marked": "^0.3.6",
-    "textile-js": "^2.0.1"
+    "textile-js": "^2.0.1",
+    "usematch": "latest"
   },
   "devDependencies": {
     "chai": "^3.5.0",
