@@ -78,6 +78,22 @@ return Promise.coroutine(function *() {
 })();
 };
 
+/*
+function _getDirLastWriteTime(dir)
+{
+return Promise.coroutine(function *() {
+	if (!(yield fs.dirExists(dir)))
+		return new Date(1970,1,1);
+
+	var dlatest = 0;
+	yield _walk(dir, null, function(item) {
+		if (item.stats.mtime>dlatest)
+			dlatest = item.stats.mtime;
+	}) 
+	return dlatest;
+})();
+}
+*/
 
 module.exports = function(options) {
 return Promise.coroutine(function *() {
@@ -100,7 +116,19 @@ return Promise.coroutine(function *() {
 	// (We'll deal with missing layouts/partials as they arise, since they may not actually be needed)
 	yield fs.ensureDir(context.getOutPath());
 
-	if (options.clean) {
+	var rebuild = options.clean;
+	/* This has now real effect. A file will only write if it actually changes anyhow.
+	var _lastBuildTime = yield _getDirLastWriteTime(context.getOutPath());
+	if (!rebuild && (yield _getDirLastWriteTime(context.getPartialsPath()))>_lastBuildTime) {
+		l.log("Partials directory has changed. Rebuilding...")
+		rebuild = true;
+	}
+	if (!rebuild && (yield _getDirLastWriteTime(context.getLayoutsPath()))>_lastBuildTime) {
+		l.log("Layouts directory has changed. Rebuilding...")
+		rebuild = true;
+	}*/
+
+	if (rebuild) {
 		//yield fs.emptyDir(context.getOutPath()); Removed. We know obey .ergoignore
 
 		var _destFilterFn = yield _load_ergoignoreFilter(context.getOutPath())
