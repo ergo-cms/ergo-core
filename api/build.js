@@ -34,12 +34,12 @@ function _load_ergoignoreFilter(dir) { // loads the file, if found OR returns an
 		.then(function(data) {
 			if (data.length>0)
 				l.vlog("Loaded ignore file: '"+path.join(dir,fname)+"'");
-			return ignore().add([fname]).add(data.toString()).createFilter();
+			return ignore().add([fname, '.git', 'node_modules']).add(data.toString()).createFilter();
 		});
 }
 
 
-function _walk(dir, filterFn, fn) {
+function _walk(dir, filterFn, fn, walkDirs) {
 return Promise.coroutine(function *() {
 	var p = Promise.resolve();
 	var walkerP = new Promise(function(resolve) { // I'd love to know how to not use the promise anti-pattern here!
@@ -54,7 +54,7 @@ return Promise.coroutine(function *() {
 		fs.walk(dir, {filter:filterFn})
 		.on('data', function (item) {
 			var stats = item.stats; // don't follow symlinks!
-			if (stats.isFile()) {
+			if (stats.isFile() || (walkDirs && stats.isDirectory() && item.path!=dir)) {
 				p = p.then(function() { 
 					return fn(item); 
 				})
@@ -95,6 +95,103 @@ return Promise.coroutine(function *() {
 }
 */
 
+
+/*
+### Race Conditions for data availability
+
+There are possible race conditions. eg:
+
+* blog.tem.html, followed by
+* blog/blog post.md
+
+The render chain for both is:
+
+* template_man, simpletag
+* header_read, header_add, marked, template_man, simpletag
+
+However, if we render each in order, then `blog.tem.html` will try to render before `header_add` has been reached in the other. 
+There are 2 solutions to this:
+
+1. 'right align' all rendering, padding with a 'dummy_render', such that the render chains are:
+ * dummy       , dummy       , dummy       , template_man, simpletag
+ * header_read , header_add  , marked      , template_man, simpletag
+        (Which just happens to work, in this case)
+2. A more tricky 'alignment' such that all eg 'template_man', will be rendered at the same time
+
+Option 1. has been chosen, for now...aka _rightAlignRenderers():
+*/	
+function _rightAlignRenderers(context) {
+	var dummy_renderer = plugin_api.findRendererByName("dummy");
+
+	// find the length of the longest chain.
+	var longest = 0;
+	for (var i=0; i<context.files.length; i++)
+	{
+		var fi = context.files[i];
+		longest = Math.max(longest, fi.renderers.length);
+	}
+	// inject the dummy renderer to the left of the existing renderers
+	for (var i=0; i<context.files.length; i++)
+	{
+		var fi = context.files[i];
+		if (fi.renderers.length<longest)
+			fi.renderers = (new Array(longest - fi.renderers.length)).fill(dummy_renderer).concat(fi.renderers);
+	}
+}
+
+
+
+function _loadAll(context) {
+	return Promise.coroutine( function *() {
+		for (var i=0; i<context.files.length; i++)
+		{
+			var fi = context.files[i];
+			yield fi.loadOrCopy(context); 
+		}
+		return true;
+	})();
+}
+
+function _saveAll(context) {
+	return Promise.coroutine( function *() {
+		for (var i=0; i<context.files.length; i++)
+		{
+			var fi = context.files[i];
+			yield fi.save(context); 
+		}
+
+		yield plugin_api.saveAll(context)
+		return true;
+	})();
+}
+
+function _renderAll(context) {
+	return Promise.coroutine( function *() {
+		l.vlog("Loading...")
+		yield _loadAll(context)
+
+		_rightAlignRenderers(context);
+
+		var keep_rendering = true;
+		l.vlog("Rendering...")
+		while(keep_rendering) {
+			keep_rendering = false;
+			for (var i=0; i<context.files.length; i++)
+			{
+				var fi = context.files[i];
+				if (fi.renderNext(context))
+					keep_rendering = true;
+			}
+		}
+		l.vlog("Saving...")
+		yield _saveAll(context);
+		return true;
+	})();
+}	
+
+
+
+
 module.exports = function(options) {
 return Promise.coroutine(function *() {
 	l.log("Building...")
@@ -117,7 +214,7 @@ return Promise.coroutine(function *() {
 	yield fs.ensureDir(context.getOutPath());
 
 	var rebuild = options.clean;
-	/* This has now real effect. A file will only write if it actually changes anyhow.
+	/* This has no real effect. A file will only write if it actually changes anyhow.
 	var _lastBuildTime = yield _getDirLastWriteTime(context.getOutPath());
 	if (!rebuild && (yield _getDirLastWriteTime(context.getPartialsPath()))>_lastBuildTime) {
 		l.log("Partials directory has changed. Rebuilding...")
@@ -141,16 +238,17 @@ return Promise.coroutine(function *() {
 			fs.remove(item.path);
 		}
 		l.log("Cleaning '"+context.getOutPath()+"'...")
-		yield _walk(context.getOutPath(), _destIgnoreFn, _deleteFile);
+		yield _walk(context.getOutPath(), _destIgnoreFn, _deleteFile, true);
 	}
 
-	var _loadFile = function(item) {
-		return context.addFile(item.path, item.stats)
-			.then(function() {
-				return true;
-			})
+	var _addFile = function(item) {
+		if (!fs.isInDir(context.getOutPath(), item.path)) // don't allow anything in the output folder to be added.
+			return context.addFile(item.path, item.stats)
+				.then(function() {
+					return true;
+				})
+		return Promise.resolve(false);
 	}
-
 
 	
 	l.log("Reading '"+context.getSourcePath()+"'...")
@@ -159,10 +257,26 @@ return Promise.coroutine(function *() {
 		var relItem = path.relative(context.getSourcePath(), item)
 		return _sourceFilterFn(relItem);
 	}
-	yield _walk(context.getSourcePath(), _sourceUseFn, _loadFile);
 
-	// Now that all the files are loaded, we can do something about rendering them
-	yield plugin_api.renderAll(context);
+	if (fs.isInDir(context.getSourcePath(), context.getPartialsPath()))
+		l.logw("Partials folder is inside the source folder. This can be problematic")
+	else
+		yield _walk(context.getPartialsPath(), null, _addFile); // load the partials, if not already done
+
+	if (fs.isInDir(context.getSourcePath(), context.getLayoutsPath()))
+		l.logw("Layouts folder is inside the source folder. This can be problematic")
+	else
+		yield _walk(context.getLayoutsPath(), null, _addFile); // load the layouts, if not already done
+
+	if (fs.isInDir(context.getSourcePath(), context.getThemePath()))
+		l.logw("Theme folder is inside the source folder. This can be problematic")
+	else
+		yield _walk(context.getThemePath(), null, _addFile); // load the themes, if not already done
+
+	yield _walk(context.getSourcePath(), _sourceUseFn, _addFile);
+
+	// Now that all the files are ready, we can do something about loading/rendering/saving them
+	yield _renderAll(context);
 
 	l.log("Done");
 	return true;

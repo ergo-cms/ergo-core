@@ -250,7 +250,7 @@ function _loadDefaultPlugins(context) {
 	var default_plugins = [ // the order of these is not important... but if they're not in this order, a few warnings will appear
 		      _api.RENDERER_ADD_DATA
 		    , _api.RENDERER_HEADER_READ
-			,  _api.RENDERER_TAG
+			, _api.RENDERER_TAG
 		    , _api.RENDERER_TEMPLATE_MAN
 		    , _api.RENDERER_TEXTILE
 		    , _api.RENDERER_MARKDOWN
@@ -264,10 +264,12 @@ function _loadDefaultPlugins(context) {
 }
 
 
+var dummy_renderer = null;
+
 function _loadplugin(name, context) {
 	if (!dummy_renderer) {
-		// add the dummy renderer on the first plugin load
-		dummy_renderer = _api.addRenderer("dummy", { priority:100, renderFn: function(text) { return text; } } );		
+		// add the dummy renderer on the first plugin load. it MUST be present for the build system
+		dummy_renderer = _addRenderer("dummy", { priority:100, renderFn: function(text) { return text; } } );		
 	}
 	if (name=="{default}" || name=="default")
 		return _loadDefaultPlugins(context);
@@ -326,87 +328,14 @@ function _loadplugin(name, context) {
 
 }
 
-
-/*
-### Race Conditions
-
-There are possible race conditions. eg:
-
-* blog.tem.html, followed by
-* blog/blog post.md
-
-The render chain for both is:
-
-* template_man, simpletag
-* header_read, header_add, marked, template_man, simpletag
-
-However, if we render each in order, then `blog.tem.html` will try to render before `header_add` has been reached in the other. 
-There are 2 solutions to this:
-
-1. 'right align' all rendering, padding with a 'dummy_render', such that the render chains are:
- * dummy       , dummy       , dummy       , template_man, simpletag
- * header_read , header_add  , marked      , template_man, simpletag
-        (Which just happens to work, in this case)
-2. A more tricky 'alignment' such that all eg 'template_man', will be rendered at the same time
-
-Option 1. has been chosen, for now...aka _rightAlignRenderers():
-*/	
-
-var dummy_renderer = null;
-
-function _rightAlignRenderers(context) {
-	// find the length of the longest chain.
-	var longest = 0;
-	for (var i=0; i<context.files.length; i++)
-	{
-		var fi = context.files[i];
-		longest = Math.max(longest, fi.renderers.length);
-	}
-	// inject the dummy renderer to the left of the existing renderers
-	for (var i=0; i<context.files.length; i++)
-	{
-		var fi = context.files[i];
-		if (fi.renderers.length<longest)
-			fi.renderers = (new Array(longest - fi.renderers.length)).fill(dummy_renderer).concat(fi.renderers);
-	}
-}
-
-
 function _saveAll(context) {
 	return Promise.coroutine( function *() {
-		for (var i=0; i<context.files.length; i++)
-		{
-			var fi = context.files[i];
-			yield fi.save(context); 
-		}
-
 		for (var i=0; i<_renderers.length; i++) {
 			yield _renderers[i].save(context);
 		}
 		return true;
 	})();
 }
-
-function _renderAll(context) {
-	return Promise.coroutine( function *() {
-		_rightAlignRenderers(context);
-
-		var keep_rendering = true;
-		l.vlog("Rendering...")
-		while(keep_rendering) {
-			keep_rendering = false;
-			for (var i=0; i<context.files.length; i++)
-			{
-				var fi = context.files[i];
-				if (fi.renderNext(context))
-					keep_rendering = true;
-			}
-		}
-		l.vlog("Saving...")
-		yield _saveAll(context);
-		return true;
-	})();
-}	
 
 
 var _api = {
@@ -420,6 +349,7 @@ var _api = {
     , RENDERER_ADD_DATA:  "add_data" 
     , RENDERER_TEXTILE: "textile"
     , RENDERER_MARKDOWN: "marked"
+    //, RENDERER_DUMMY: "dummy" // keep undocumented
 
 	//
 	, addRenderer: _addRenderer
@@ -430,9 +360,7 @@ var _api = {
  		_renderers.splice(i,1)
  		return prevRenderer;
 	  }
-	//, getRenderer: function(name) {
-	//	return _findRendererByName(name);
-	//  }
+	, findRendererByName: _findRendererByName
 	//, getRenderers: function() { 
 	//	return _renderers.slice(); // return a *copy* 
 	//}
@@ -457,7 +385,8 @@ var _api = {
 	, buildRenderChain: _buildRenderChain
 	, loadPlugin: _loadplugin
 
-	, renderAll: _renderAll
+	//, renderAll: _renderAll
+	, saveAll: _saveAll
 };
 
 

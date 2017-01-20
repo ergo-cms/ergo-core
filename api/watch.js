@@ -51,7 +51,7 @@ function _watch(options, context) {
 	if (!!_watcher)
 		return _watcher;
 
-	options.watch_dir = options.watch_dir || context.getSourcePath(); // undocumented. only a dev might want this... probably
+	options.watch_dir = options.watch_dir || context.getBasePath(); // undocumented. only a dev might want this... probably
 	options.watch_delay = options.watch_delay || 300;
 	var fswatch_options = {
 		  persistent: options.persistent || true // default is: true
