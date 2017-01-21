@@ -23,7 +23,7 @@ const ignore = require('ignore');
 	fs[fn] = Promise.promisify(fs[fn])
 });
 
-function _load_ergoignoreFilter(dir) { // loads the file, if found OR returns an empty one
+function __load_ergoignoreFilter(dir) { // loads the file, if found OR returns an empty one
 	const fname = '.ergoignore';
 	return fs
 		.readFile(path.join(dir, fname ), 'utf8')
@@ -38,9 +38,13 @@ function _load_ergoignoreFilter(dir) { // loads the file, if found OR returns an
 		});
 }
 
-
-function _walk(dir, filterFn, fn, walkDirs) {
+function _walk(dir, fn, walkDirs) {
 return Promise.coroutine(function *() {
+	var ignoreFilter = yield __load_ergoignoreFilter(dir);
+	var filterFn = function(item) { 
+				var relItem = path.relative(dir, item)
+				return ignoreFilter(relItem);
+			}
 	var p = Promise.resolve();
 	var walkerP = new Promise(function(resolve) { // I'd love to know how to not use the promise anti-pattern here!
 
@@ -228,17 +232,13 @@ return Promise.coroutine(function *() {
 	if (rebuild) {
 		//yield fs.emptyDir(context.getOutPath()); Removed. We know obey .ergoignore
 
-		var _destFilterFn = yield _load_ergoignoreFilter(context.getOutPath())
-		var _destIgnoreFn = function(item) { 
-			var relItem = path.relative(context.getOutPath(), item)
-			return _destFilterFn(relItem);
-		}
+		//var _destIgnoreFn = yield _get_fileFilter(context.getOutPath());
 		var _deleteFile = function(item) {
 			l.vlog("Removing '"+item.path+"'...");
 			fs.remove(item.path);
 		}
 		l.log("Cleaning '"+context.getOutPath()+"'...")
-		yield _walk(context.getOutPath(), _destIgnoreFn, _deleteFile, true);
+		yield _walk(context.getOutPath(), _deleteFile, true);
 	}
 
 	var _addFile = function(item) {
@@ -252,28 +252,24 @@ return Promise.coroutine(function *() {
 
 	
 	l.log("Reading '"+context.getSourcePath()+"'...")
-	var _sourceFilterFn = yield _load_ergoignoreFilter(context.getSourcePath())
-	var _sourceUseFn = function(item) {
-		var relItem = path.relative(context.getSourcePath(), item)
-		return _sourceFilterFn(relItem);
-	}
 
 	if (fs.isInDir(context.getSourcePath(), context.getPartialsPath()))
 		l.logw("Partials folder is inside the source folder. This can be problematic")
 	else
-		yield _walk(context.getPartialsPath(), null, _addFile); // load the partials, if not already done
+		yield _walk(context.getPartialsPath(), _addFile); // load the partials, if not already done
 
 	if (fs.isInDir(context.getSourcePath(), context.getLayoutsPath()))
 		l.logw("Layouts folder is inside the source folder. This can be problematic")
 	else
-		yield _walk(context.getLayoutsPath(), null, _addFile); // load the layouts, if not already done
+		yield _walk(context.getLayoutsPath(), _addFile); // load the layouts, if not already done
 
 	if (fs.isInDir(context.getSourcePath(), context.getThemePath()))
 		l.logw("Theme folder is inside the source folder. This can be problematic")
-	else
-		yield _walk(context.getThemePath(), null, _addFile); // load the themes, if not already done
+	else {
+		yield _walk(context.getThemePath(), _addFile); // load the themes, if not already done
+	}
 
-	yield _walk(context.getSourcePath(), _sourceUseFn, _addFile);
+	yield _walk(context.getSourcePath(), _addFile);
 
 	// Now that all the files are ready, we can do something about loading/rendering/saving them
 	yield _renderAll(context);
