@@ -9,7 +9,7 @@
 */
 "use strict";
 
-var l  = require('ergo-utils').log.module('ergo-api-theme');
+var l  = require('ergo-utils').log;//.module('ergo-api-theme');
 var _  = require('ergo-utils')._;
 var fs = require('ergo-utils').fs.extend(require('fs-extra'));
 var path = require('path');
@@ -17,7 +17,7 @@ var Promise = require('bluebird');
 var download = require("download-git-repo")
 
 // promisify a few funcs we need
-"dirExists,ensureDir,emptyDir,readFile,writeFile,readdir,remove".split(',').forEach(function(fn) {
+"dirExists,fileExists,ensureDir,emptyDir,readFile,writeFile,readdir,remove".split(',').forEach(function(fn) {
 	fs[fn] = Promise.promisify(fs[fn])
 });
 
@@ -44,19 +44,21 @@ return Promise.coroutine(function *() {
 	var dest = path.join(context.getThemesRootPath(), foldername);
 
 	if (!(yield fs.dirExists(dest))) {
-		l.logw("'"+foldername+"' is not installed. Please run 'ergo theme install "+foldername+"'");
-		return;
+		l.loge("'"+foldername+"' is not installed. Please run 'ergo theme install "+foldername+"'");
+		return false;
 	}
 
 	if (!(yield _sed(context.config_path, /\btheme\s*\:\s*["'].*?['"]/i, "theme: \""+foldername+"\""))) { // look for 'theme : "..."'
 		// couldn't find the theme entry
-		if (!(yield _sed(context.config_path, /\bmodule\.exports\s*\=\s*\{/i, "module.exports = {\n\ttheme: \""+foldername+"\","))) // look for 'module.exports = {'
+		if (!(yield _sed(context.config_path, /\bmodule\.exports\s*\=\s*\{/i, "module.exports = {\n\ttheme: \""+foldername+"\","))) { // look for 'module.exports = {' 
 			l.logw("Failed to update'"+context.config_path+"'. You will need to add 'theme: \""+foldername+"\",' manually");
+			return false;
+		}
 		else
-			l.log("Added new theme entry");
+			l.vlog("Added new theme entry");
 	}
 	else
-		l.log("Updated theme entry");
+		l.vlog("Updated theme entry");
 	return true;
 })();}
 
@@ -64,14 +66,22 @@ function _theme_install(name, options) {
 return Promise.coroutine(function *() {
 	options = options || {}
 	var context = options.context || (yield require('./config').getContextP(options.working_dir));
-	var foldername = path.basename(name); // strip out any ergo-cms/theme ish things
+	var foldername = path.basename(name).replace(/[-_]?theme[-_]?/i, ''); // strip out any ergo-cms/theme ish things
 	var repo = name;
 	if (repo.indexOf('/')<0)
 		repo = 'github:ergo-cms/theme-'+repo;
 	var dest = path.join(context.getThemesRootPath(), foldername);
-	l.log("installing '"+repo+"' as '"+foldername+"'")
+	l.vlog("installing '"+repo+"' as '"+foldername+"'")
+	if (options.progress)
+		options.progress('install')
 	yield download(repo, dest, {});
+	if (!(yield fs.fileExists(path.join(dest,"theme.ergo.js")))) {
+		l.loge("'"+repo+"' is not a valid theme file. It is missing 'theme.ergo.js'. Operation aborted")
+		return null;
+	}
+
 	yield _theme_switch(foldername, { context:context})
+	return foldername;
 })();
 }
 
