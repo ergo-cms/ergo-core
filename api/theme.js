@@ -92,7 +92,7 @@ return Promise.coroutine(function *() {
 	var files = yield fs.readdir(context.getThemesRootPath());
 	for(var i=0; i<files.length; i++) {
 		var dir = path.join(context.getThemesRootPath(), files[i]);
-		if (yield fs.dirExists(dir))
+		if ((yield fs.dirExists(dir)) && (yield fs.fileExists(path.join(dir, 'theme.ergo.js'))))
 			console.log(files[i]);
 	}
 	console.log(""); // deliberate empty line
