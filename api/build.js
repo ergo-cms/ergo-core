@@ -152,6 +152,7 @@ function _loadAll(context) {
 			var fi = context.files[i];
 			yield fi.loadOrCopy(context); 
 		}
+		yield plugin_api.loadAll(context)
 		return true;
 	})();
 }
@@ -243,11 +244,8 @@ return Promise.coroutine(function *() {
 
 	var _addFile = function(item) {
 		if (!fs.isInDir(context.getOutPath(), item.path)) // don't allow anything in the output folder to be added.
-			return context.addFile(item.path, item.stats)
-				.then(function() {
-					return true;
-				})
-		return Promise.resolve(false);
+			return context.addFile(item.path, item.stats);
+		return false;
 	}
 
 	

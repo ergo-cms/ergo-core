@@ -40,6 +40,7 @@ function Renderer(name, options) {
 		// , extensions: []
 		// , renderFn
 		// , reconfigureFn:
+		// , loadFn
 		// , saveFn
 		}, options);
 	this.plugin_options = {}; // specfic options for the renderer. Set by 'plugin_options' in config.js
@@ -95,6 +96,12 @@ Renderer.prototype.render = function(fields, fileInfo, context) {
 	return this.options.renderFn.call(this, fields.content, fields, fileInfo, context);
 }
 
+
+Renderer.prototype.load = function(context) {
+	if (this.options.loadFn)
+		return Promise.resolve(this.options.loadFn.call(this, context));
+	return Promise.resolve(true);
+};
 
 Renderer.prototype.save = function(context) {
 	if (this.options.saveFn)
@@ -156,7 +163,32 @@ function _addRenderer(name, options) {
 	return newRenderer;
 }
 
-function _buildRenderChain(filename, configObj) {
+function _makeRenderChain(renderers, configObj) {
+
+	var ordered = [];
+	// Now we have the main 'renderers' required, we walk the complete render tree and generate an in-order list
+	function _walk(r) {
+		function _fetchAndWalk(obj) { // obj is { name, priority }
+			var renderer = obj.renderer || _findRendererByName(obj.name);
+			if (!renderer)
+				throw new Error("Failed to ever find the renderer named '"+obj.name+"'");
+			if (!obj.renderer) //save it for later
+				obj.renderer = renderer;
+			_walk(renderer);
+		}
+		if (ordered.indexOf(r)<0) { // check that we've already not added this renderer.
+			// walk the pre-render list
+			r.preRender.forEach(_fetchAndWalk)
+			ordered.push(r); // finally push this renderer
+			// walk the post-render list
+			r.postRender.forEach(_fetchAndWalk)
+		}
+	}
+	renderers.forEach(_walk);	
+	return ordered;
+}
+
+function _buildRenderChainFromFile(filename, configObj) {
 	// various scenarios:
 	// blogpost.tex:    
 	//		simple => textile => (save)
@@ -208,32 +240,35 @@ function _buildRenderChain(filename, configObj) {
 	}
 
 
-	var ordered = [];
-	// Now we have the main 'renderers' required, we walk the complete render tree and generate an in-order list
-	function _walk(r) {
-		function _fetchAndWalk(obj) { // obj is { name, priority }
-			var renderer = obj.renderer || _findRendererByName(obj.name);
-			if (!renderer)
-				throw new Error("Failed to ever find the renderer named '"+obj.name+"'");
-			if (!obj.renderer) //save it for later
-				obj.renderer = renderer;
-			_walk(renderer);
-		}
-		if (ordered.indexOf(r)<0) { // check that we've already not added this renderer.
-			// walk the pre-render list
-			r.preRender.forEach(_fetchAndWalk)
-			ordered.push(r); // finally push this renderer
-			// walk the post-render list
-			r.postRender.forEach(_fetchAndWalk)
-		}
-	}
-	chain.forEach(_walk);
+	var ordered = _makeRenderChain(chain, configObj)
 
 	var finalFilename = filename;
 	if (ordered.length>0) // only futz with the 'extensions' if we have a valid render chain...? Even then, this might NOT be a good idea!
 		finalFilename = basefilename+'.'+nextExt;
 	l.vvlog("Render chain for '" + filename+ "' is: " + l.dump(ordered.map(function(r) { return r.name; })));
 	return { renderers:ordered, filename: finalFilename };
+}
+
+function _buildRenderChainFromRendererNames(renderers, configObj) {
+	var chain = [];
+	var renderers = _.toRealArray(renderers, ',');
+	for (var i=0; i<renderers.length; i++) {
+		var r = _findRendererByName(renderers[i]);
+		if (!r) {
+			l.vvlogd("Failed to find named renderer for '"+renderers[i]+"'. Skipping...")
+			continue;
+		}
+		if (chain.indexOf(r)<0) {
+			l.vvlogd("Chaining named renderer '"+renderers[i]+"'")
+			chain.push(r);
+		}
+	}
+
+
+	var ordered = _makeRenderChain(chain, configObj)
+
+	l.vvlog("Named render chain is: " + l.dump(ordered.map(function(r) { return r.name; })));
+	return { renderers:ordered };
 }
 
 function _reconfigurePlugin(renderer, context) {
@@ -250,6 +285,7 @@ function _loadDefaultPlugins(context) {
 	var default_plugins = [ // the order of these is not important... but if they're not in this order, a few warnings will appear
 		      _api.RENDERER_ADD_DATA
 		    , _api.RENDERER_HEADER_READ
+		    , _api.RENDERER_COLLATE
 			, _api.RENDERER_TAG
 		    , _api.RENDERER_TEMPLATE_MAN
 		    , _api.RENDERER_TEXTILE
@@ -328,10 +364,19 @@ function _loadplugin(name, context) {
 
 }
 
+function _loadAll(context) {
+	return Promise.coroutine( function *() {
+		for (var i=0; i<_renderers.length; i++) {
+			yield Promise.resolve(_renderers[i].load(context));
+		}
+		return true;
+	})();
+}
+
 function _saveAll(context) {
 	return Promise.coroutine( function *() {
 		for (var i=0; i<_renderers.length; i++) {
-			yield _renderers[i].save(context);
+			yield Promise.resolve(_renderers[i].save(context));
 		}
 		return true;
 	})();
@@ -347,6 +392,7 @@ var _api = {
     , RENDERER_TEMPLATE_MAN: "template_man" 
     , RENDERER_HEADER_READ:  "header_read" 
     , RENDERER_ADD_DATA:  "add_data" 
+    , RENDERER_COLLATE:  "collate" 
     , RENDERER_TEXTILE: "textile"
     , RENDERER_MARKDOWN: "marked"
     //, RENDERER_DUMMY: "dummy" // keep undocumented
@@ -382,11 +428,13 @@ var _api = {
     	return false;
 
 	  }
-	, buildRenderChain: _buildRenderChain
+	, renderChainFromFile: _buildRenderChainFromFile
+	, renderChainFromRendererNames: _buildRenderChainFromRendererNames
 	, loadPlugin: _loadplugin
 
 	//, renderAll: _renderAll
 	, saveAll: _saveAll
+	, loadAll: _loadAll
 };
 
 
