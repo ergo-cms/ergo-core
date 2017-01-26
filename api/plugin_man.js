@@ -52,6 +52,10 @@ function _plugin_list(options) {
 return Promise.coroutine(function *() {
 	options = options || {}
 	var context = options.context || (yield require('./config').getContextP(options.working_dir));
+	if (!(yield fs.dirExists(context.getPluginsPath()))) {
+		return false;
+	}
+	
 	var files = yield fs.readdir(context.getPluginsPath());
 	for(var i=0; i<files.length; i++) {
 		var dir = path.join(context.getPluginsPath(), files[i]);
@@ -68,6 +72,9 @@ return Promise.coroutine(function *() {
 	options = options || {}
 	var context = options.context || (yield require('./config').getContextP(options.working_dir));
 	var foldername = name;
+	if (!(yield fs.dirExists(context.getPluginsPath()))) {
+		return false;
+	}
 	var dir = path.join(context.getPluginsPath(), foldername);
 	if (yield fs.dirExists(dir))
 		yield fs.remove(dir)
