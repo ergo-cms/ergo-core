@@ -13,6 +13,7 @@ var _  = require('ergo-utils')._;
 var fs = require('ergo-utils').fs.extend(require('fs-extra'));
 var path = require('path');
 var Promise = require('bluebird');
+var _config = require('./config')
 
 //l.color = l._colors.Dim+l._colors.FgRed;
 
@@ -36,7 +37,7 @@ function Renderer(name, options) {
 	this.options = _.extend( {
 		  priority: 50
 		, binary: false
-		// , calcExtensionFn: function(origFilename) { return _api.DEF_EXTENSION; }
+		// , calcExtensionFn: function(origFilename) { return _config.DEF_EXTENSION; }
 		// , extensions: []
 		// , renderFn
 		// , reconfigureFn:
@@ -77,7 +78,7 @@ Renderer.prototype.addPostRenderer = function(name, priority) {
 Renderer.prototype.calcExtension = function(filename, currentExt) {
 	if (this.options.calcExtensionFn)
 		return this.options.calcExtensionFn.call(this, filename, currentExt);
-	return _api.DEF_EXTENSION; // by default, just return 'html'
+	return _config.DEF_EXTENSION; // by default, just return 'html'
 }
 
 Renderer.prototype.reconfigure = function(plugin_options) {
@@ -216,7 +217,7 @@ function _buildRenderChainFromFile(filename, configObj) {
 	// NB: 
 	// 		markdown & textile renderers BOTH use "simple" as a preRenderer, 
 	//			so "simple" is implicitly included here, when .tex is used.
-	var nextExt = exts.slice(-1) || _api.DEF_EXTENSION;
+	var nextExt = exts.slice(-1) || _config.DEF_EXTENSION;
 	for (var e=0; e<exts.length; e++) {
 		// find the best renderer for this extension
 		var ext = exts[e];
@@ -326,14 +327,14 @@ function _loadplugin(name, context) {
 	}
 
 	if (fs.dirExistsSync(userPath)) {
-		var userLib = path.join(userPath, name);
+		var userLib = path.join(userPath, name, 'plugin.ergo.js');
 		try {
 			require(userLib)
 		}
 		catch (e) {
 			// we expect to fail to load plugins... but generate a *real* error if there is a file in there
-			if (fs.fileExistsSync(userLib+'.js')) {
-				l.loge("Error loading plugin '" + name+ "' in '"+userPath+"':\n"+_.niceStackTrace(e))
+			if (fs.fileExistsSync(userLib)) {
+				throw new Error("Error loading plugin '" + name+ "' in '"+userPath+"':\n"+_.niceStackTrace(e))
 				return null;
 			}
 		}
@@ -385,10 +386,9 @@ function _saveAll(context) {
 
 var _api = {
 	// some common names
-	  DEF_EXTENSION: "html" // This CAN be changed by configuration at run-time, through the config.default_extension property.
 
 	// These render names only here, because it's inbuilt & someone might have a different library to swap in
-	, RENDERER_TAG: "usematch" 
+	  RENDERER_TAG: "usematch" 
     , RENDERER_TEMPLATE_MAN: "template_man" 
     , RENDERER_HEADER_READ:  "header_read" 
     , RENDERER_ADD_DATA:  "add_data" 
@@ -413,21 +413,6 @@ var _api = {
 	, resort: function() {
 		_renderers.sort(function(a,b) { return b.priority - a.priority; }); 
 	}
-	, changeDefaultExtension: function(defExt) {
-    	var defExt = _normaliseExt(defExt);
-		l.vlog("Changing default Extension: " + defExt)
-    	if (!_.isEmptyString(defExt) && defExt!=_api.DEF_EXTENSION) {
-    		l.vlog("Changed default extension to '" +defExt+ "'")
-    		_api.DEF_EXTENSION = defExt;
-    		if (_renderers.length) {
-				l.logw("Changed default extension after plugins have loaded. Expect the unexpected");
-				return -1;
-    		}
-    		return true;
-    	}
-    	return false;
-
-	  }
 	, renderChainFromFile: _buildRenderChainFromFile
 	, renderChainFromRendererNames: _buildRenderChainFromRendererNames
 	, loadPlugin: _loadplugin

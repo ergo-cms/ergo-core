@@ -64,7 +64,7 @@ var default_config = {
 	//	default:{verbose:0,quiet:false}// & the super-secret 'debug'
 	//}
 
-	, default_extension: "html" // when changed by a user, api/plugin.DEF_EXTENISON is also updated 
+	, default_extension: "html" // when changed by a user, config.DEF_EXTENSION is also updated 
 	, exclude : "" // also excludes out,partials, themes & layout dirs & config.js as needed
 
 	, plugins: "default" // == simpletag,textile,marked
@@ -125,10 +125,9 @@ function __getContext(configjs) { // always syncronous, due to require(configjs)
 	}
     try {
     	var config = _.extend({}, default_config, require(configjs));
+    	config.default_extension = _normaliseExt(config.default_extension || "html");
+    	_config.DEF_EXTENSION = config.default_extension; // update this API's global
 
-		var plugin = require('./plugin');
-		plugin.changeDefaultExtension(config.default_extension)
-    	 
 	    _singleton_context = new Context(config, configjs);
 	    return _singleton_context;
 	}
@@ -168,6 +167,7 @@ var _config = {
 	, getContextSync: _getContextSync
 	, findConfigFilenameP: _findConfigFilename // 'Promised' version
 	, findConfigFilenameSync: _findConfigFilenameSync
+	, DEF_EXTENSION: "html" // This CAN be changed by configuration at run-time, through the config.default_extension property.
 };
 
 

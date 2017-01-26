@@ -144,21 +144,23 @@ function _rightAlignRenderers(context) {
 }
 
 
-
 function _loadAll(context) {
 	return Promise.coroutine( function *() {
+		var startTime = Date.now();
 		for (var i=0; i<context.files.length; i++)
 		{
 			var fi = context.files[i];
 			yield fi.loadOrCopy(context); 
 		}
 		yield plugin_api.loadAll(context)
+		l.elapsed(startTime, 'loadAll ')
 		return true;
 	})();
 }
 
 function _saveAll(context) {
 	return Promise.coroutine( function *() {
+		var startTime = Date.now();
 		for (var i=0; i<context.files.length; i++)
 		{
 			var fi = context.files[i];
@@ -166,6 +168,7 @@ function _saveAll(context) {
 		}
 
 		yield plugin_api.saveAll(context)
+		l.elapsed(startTime, 'saveAll ')
 		return true;
 	})();
 }
@@ -179,15 +182,21 @@ function _renderAll(context) {
 
 		var keep_rendering = true;
 		l.vlog("Rendering...")
+		l.pushTime();
+		var pass=1;
 		while(keep_rendering) {
 			keep_rendering = false;
+			//l.pushTime();
 			for (var i=0; i<context.files.length; i++)
 			{
 				var fi = context.files[i];
 				if (fi.renderNext(context))
 					keep_rendering = true;
 			}
+			//l.popTime("Render pass #"+(pass++)+' ' )
 		}
+		l.popTime('Total Render ')
+
 		l.vlog("Saving...")
 		yield _saveAll(context);
 		return true;
