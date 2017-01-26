@@ -283,9 +283,9 @@ function _reconfigurePlugin(renderer, context) {
 
 function _loadDefaultPlugins(context) {
 	var default_plugins = [ // the order of these is not important... but if they're not in this order, a few warnings will appear
-		      _api.RENDERER_ADD_DATA
+		      _api.RENDERER_COLLATE
+		    , _api.RENDERER_ADD_DATA
 		    , _api.RENDERER_HEADER_READ
-		    , _api.RENDERER_COLLATE
 			, _api.RENDERER_TAG
 		    , _api.RENDERER_TEMPLATE_MAN
 		    , _api.RENDERER_TEXTILE

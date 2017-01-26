@@ -24,17 +24,7 @@ var download = require("download-git-repo")
 download = Promise.promisify(download);
 
 
-function _sed(file, search, replace, options) {
-return Promise.coroutine(function *() {
-	var retVal = false;
-	var data = (yield fs.readFile(file, 'utf8')).toString();
-	data = data.replace(search, function() { 
-		retVal = true;
-		return replace; });
-	yield fs.writeFile(file, data, 'utf8')
-	return retVal;
-})();
-}
+var _sed = require('../lib/sed').sedP;
 
 function _theme_switch(name, options) {
 return Promise.coroutine(function *() {
@@ -95,8 +85,6 @@ return Promise.coroutine(function *() {
 		if ((yield fs.dirExists(dir)) && (yield fs.fileExists(path.join(dir, 'theme.ergo.js'))))
 			console.log(files[i]);
 	}
-	console.log(""); // deliberate empty line
-
 	return true;
 })();
 }
