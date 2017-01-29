@@ -125,7 +125,7 @@ There are 2 solutions to this:
 Option 1. has been chosen, for now...aka _rightAlignRenderers():
 */	
 function _rightAlignRenderers(context) {
-	var dummy_renderer = plugin_api.findRendererByName("dummy");
+	var dummy_renderer = plugin_api.findRendererByName(context, "dummy");
 
 	// find the length of the longest chain.
 	var longest = 0;
@@ -213,11 +213,13 @@ return Promise.coroutine(function *() {
 	var context = require('./config').getContextSync(options.working_dir);
 	context.mergeRuntimeOptions(options);
 
-	// load the default plugins, markdown, textile and simple
-	var plugins_to_load = context.config.plugins || "{default}"
-	_.toRealArray(plugins_to_load, ',').forEach(function(name) {
-		plugin_api.loadPlugin(name, context)
+	// find plugins & prep them
+	var plugin_filenames = [];
+	yield _walk(context.getPluginsPath(), function(item) {
+		if (path.basename(item)==='plugin.ergo.js')
+			plugin_filenames.push(item);
 	});
+	yield plugin_api.init(context, plugin_filenames);
 
 	l.vvlogd("Context is:\n"+l.dump(context));
 
@@ -277,6 +279,7 @@ return Promise.coroutine(function *() {
 	}
 
 	yield _walk(context.getSourcePath(), _addFile);
+
 
 	// Now that all the files are ready, we can do something about loading/rendering/saving them
 	yield _renderAll(context);
