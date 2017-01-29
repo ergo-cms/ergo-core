@@ -285,13 +285,22 @@ Renderers.prototype.findByExt = function(ext) {
 function _addPlugin(context, name, module, user_plugin) {
 	if (_.isString(module))
 		module = require(module)
+	
+	if (user_plugin && !module.active || module.active === false)
+		// exit if a user_plugin isn't explicitly made active
+		// exit if an inbuilt plugin is explicitly made inactive (never happens, probably)
+		return null;
 
 	var plugin;
 
 	if (module.render && _.isFunction(module.render)) {
+		if (user_plugin)
+			l.vlog("Loading renderer: '" + name + "'");
 		plugin = context._renderers.add(name, module, user_plugin);
 	}
 	else {
+		if (user_plugin)
+			l.vlog("Loading plugin: '" + name + "'");
 		plugin = context._plugins.add(name, module, user_plugin);
 	}
 	return plugin;
@@ -332,6 +341,11 @@ function _initPlugins(context, user_plugins) {
 
 		context._renderers.sort();
 		context._plugins.sort();
+
+		// merge plugins defaults with the global context
+		context._plugins.forEach(function(p) {
+			context.config.default_fields = _.extend({}, p.module['default_fields'], context.config.default_fields);
+		})
 
 
 		return true;

@@ -52,10 +52,9 @@ function _plugin_list(options) {
 return Promise.coroutine(function *() {
 	options = options || {}
 	var context = options.context || (yield require('./config').getContextP(options.working_dir));
-	if (!(yield fs.dirExists(context.getPluginsPath()))) {
+	/*if (!(yield fs.dirExists(context.getPluginsPath()))) {
 		return false;
-	}
-	
+	}*/
 	var files = yield fs.readdir(context.getPluginsPath());
 	for(var i=0; i<files.length; i++) {
 		var dir = path.join(context.getPluginsPath(), files[i]);
@@ -66,6 +65,64 @@ return Promise.coroutine(function *() {
 	return true;
 })();
 }
+
+function _plugin_listActive(options) {
+return Promise.coroutine(function *() {
+	options = options || {}
+	var context = options.context || (yield require('./config').getContextP(options.working_dir));
+	/*if (!(yield fs.dirExists(context.getPluginsPath()))) {
+		return false;
+	}*/
+	
+	var files = yield fs.readdir(context.getPluginsPath());
+	for(var i=0; i<files.length; i++) {
+		var dir = path.join(context.getPluginsPath(), files[i]);
+		if ((yield fs.dirExists(dir)) && (yield fs.fileExists(path.join(dir, 'plugin.ergo.js')))){
+			var m = require(path.join(dir, 'plugin.ergo.js'));
+			if (!!m.active)
+				console.log(files[i]);
+		}
+			
+	}
+
+	return true;
+})();
+}
+
+function _plugin_activate(name, activate, options) {
+return Promise.coroutine(function *() {
+	options = options || {}
+	var context = options.context || (yield require('./config').getContextP(options.working_dir));
+
+	var foldername = name; // strip out any ergo-cms/theme ish things
+	var dest = path.join(context.getPluginsPath(), foldername, 'plugin.ergo.js');
+
+	if (!(yield fs.fileExists(dest))) {
+		if (activate) {
+			l.loge("'"+foldername+"' is not installed. Please run 'ergo plugin install "+foldername+"'");
+			return false;
+		}
+		else
+		{
+			l.logw("'"+foldername+"' is not installed. Can't deactivate!")
+			return false;
+		}
+	}
+	
+	if (!(yield _sed(dest, /\bactive\s*\:\s*.+?\b/i, "active: "+activate))) { // look for 'active : ...'
+		// couldn't find the 'active' entry
+		if (!(yield _sed(dest, /\bmodule\.exports\s*\=\s*\{/i, "module.exports = {\n\tactive: "+activate+","))) { // look for 'module.exports = {' 
+			l.logw("Failed to update'"+dest+"'. You will need to adjust 'active: "+activate+"' manually");
+			return false;
+		}
+	}
+
+	console.log("Plugin is now " + (activate?"active":"inactive"));
+
+	return true;
+})();
+}
+
 
 function _plugin_remove(name, options) {
 return Promise.coroutine(function *() {
@@ -87,5 +144,7 @@ return Promise.coroutine(function *() {
 module.exports = {
 	install: _plugin_install,
 	list: _plugin_list,
+	listActive: _plugin_listActive,
 	remove: _plugin_remove,
+	activate: _plugin_activate,
 }

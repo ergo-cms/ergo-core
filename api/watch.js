@@ -101,7 +101,7 @@ function _watch(options, context) {
 		filename = path.resolve(options.watch_dir, filename);
 		// ignore the params themselves, except to log some information about the change:
 		if (fs.isInDir(context.getOutPath(), filename)) {
-			l.vlog("Ignoring changes for '" + filename + "'");
+			//l.vlog("Ignoring changes for '" + filename + "'");
 			return;
 		}
 		l.vlog(eventType + ": '"+ filename + "'");

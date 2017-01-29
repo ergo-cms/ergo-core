@@ -19,7 +19,7 @@ var FileInfo = require('../lib/fileinfo');
 const ignore = require('ignore');
 
 // promisify a few funcs we need
-"dirExists,ensureDir,emptyDir,emptyDir,readFile,writeFile".split(',').forEach(function(fn) {
+"dirExists,ensureDir,emptyDir,emptyDir,readFile,writeFile,readlink,realpath".split(',').forEach(function(fn) {
 	fs[fn] = Promise.promisify(fs[fn])
 });
 
@@ -38,8 +38,9 @@ function __load_ergoignoreFilter(dir) { // loads the file, if found OR returns a
 		});
 }
 
-function _walk(dir, fn, walkDirs) {
+function _walk(dir, fn, options) {
 return Promise.coroutine(function *() {
+	options = options||{};
 	var ignoreFilter = yield __load_ergoignoreFilter(dir);
 	var filterFn = function(item) { 
 				var relItem = path.relative(dir, item)
@@ -58,9 +59,20 @@ return Promise.coroutine(function *() {
 		fs.walk(dir, {filter:filterFn})
 		.on('data', function (item) {
 			var stats = item.stats; // don't follow symlinks!
-			if (stats.isFile() || (walkDirs && stats.isDirectory() && item.path!=dir)) {
+			if (stats.isFile() || (!!options.walkDirs && stats.isDirectory() && item.path!=dir)) {
 				p = p.then(function() { 
 					return fn(item); 
+				})
+			}
+			else if (options.followSymLinks && stats.isSymbolicLink()) {
+				//l.vlog("symlink: " + stats.isDirectory() + "\n"+l.dump(item))
+				p = p.then(function(){
+					return fs.realpath(item.path).
+						then(function(resolved_path) {
+							//resolved_path = path.resolve(dir, resolved_path)
+							l.vlog("Followed symlink path: "+resolved_path)
+							return _walk(resolved_path, fn); // NB: don't follow symlinks again!
+						})
 				})
 			}
 			else if (!stats.isDirectory())
@@ -215,10 +227,11 @@ return Promise.coroutine(function *() {
 
 	// find plugins & prep them
 	var plugin_filenames = [];
+	l.vlog("Reading plugins...")
 	yield _walk(context.getPluginsPath(), function(item) {
-		if (path.basename(item)==='plugin.ergo.js')
-			plugin_filenames.push(item);
-	});
+		if (path.basename(item.path)==='plugin.ergo.js') 
+			plugin_filenames.push(item.path);
+	}, { followSymLinks:true });
 	yield plugin_api.init(context, plugin_filenames);
 
 	l.vvlogd("Context is:\n"+l.dump(context));
@@ -250,7 +263,7 @@ return Promise.coroutine(function *() {
 			fs.remove(item.path);
 		}
 		l.log("Cleaning '"+context.getOutPath()+"'...")
-		yield _walk(context.getOutPath(), _deleteFile, true);
+		yield _walk(context.getOutPath(), _deleteFile, {walkDirs:true} );
 	}
 
 	var _addFile = function(item) {
