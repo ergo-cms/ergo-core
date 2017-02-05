@@ -220,6 +220,7 @@ function _renderAll(context) {
 
 module.exports = function(options) {
 return Promise.coroutine(function *() {
+	l.pushTime();
 	l.log("Building...")
 	options = options || {};
 	var context = require('./config').getContextSync(options.working_dir);
@@ -297,7 +298,8 @@ return Promise.coroutine(function *() {
 	// Now that all the files are ready, we can do something about loading/rendering/saving them
 	yield _renderAll(context);
 
-	l.log("Done");
+	//l.log("Done");
+	l.popTime("Done. Total")
 	return true;
 })();
 }
