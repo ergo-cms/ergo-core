@@ -20,12 +20,12 @@
     "bluebird": "^3.4.7",
     "dateformat": "^2.0.0",
     "download-git-repo": "^0.2.1",
-    "ergo-core": "latest",
     "ergo-utils": "latest",
     "fs-extra": "^1.0.0",
     "ignore": "^3.2.0",
     "jsinf": "latest",
     "marked": "^0.3.6",
+    "ssh2": "^0.5.4",
     "textile-js": "^2.0.1",
     "usematch": "latest"
   },
