@@ -113,6 +113,21 @@ function _findConfigFilename(working_dir) { // returns null if not found
 
 var _singleton_context = null;
 
+function _makeNewContext(configjs) {
+    try {
+    	var config = _.extend({}, default_config, require(configjs));
+    	config.default_extension = _normaliseExt(config.default_extension || "html");
+    	_config.DEF_EXTENSION = config.default_extension; // update this API's global
+
+	    var ctx = new Context(config, configjs);
+	    return ctx;
+	}
+	catch (e) {
+		l.loge(_.niceStackTrace(e))
+		throw e;
+	}
+}
+
 function __getContext(configjs) { // always syncronous, due to require(configjs)
 	if (_singleton_context) {
 		l.logw("Attempt to find a new context, when one has already been created!")
@@ -123,18 +138,8 @@ function __getContext(configjs) { // always syncronous, due to require(configjs)
 		l.logw('Configuration file not found.')
 		return null;
 	}
-    try {
-    	var config = _.extend({}, default_config, require(configjs));
-    	config.default_extension = _normaliseExt(config.default_extension || "html");
-    	_config.DEF_EXTENSION = config.default_extension; // update this API's global
-
-	    _singleton_context = new Context(config, configjs);
-	    return _singleton_context;
-	}
-	catch (e) {
-		l.loge(_.niceStackTrace(e))
-		throw e;
-	}
+    _singleton_context = _makeNewContext(configjs);
+    return _singleton_context;
 }
 
 function _getContextSync(working_dir)
@@ -165,6 +170,7 @@ function _getContext(working_dir) // async version
 var _config = {
 	  getContextP: _getContext // 'Promised' version
 	, getContextSync: _getContextSync
+	, newContext: _makeNewContext
 	, findConfigFilenameP: _findConfigFilename // 'Promised' version
 	, findConfigFilenameSync: _findConfigFilenameSync
 	, DEF_EXTENSION: "html" // This CAN be changed by configuration at run-time, through the config.default_extension property.

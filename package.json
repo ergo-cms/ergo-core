@@ -27,7 +27,8 @@
     "marked": "^0.3.6",
     "ssh2": "^0.5.4",
     "textile-js": "^2.0.1",
-    "usematch": "latest"
+    "usematch": "latest",
+    "jsinf": "latest"
   },
   "devDependencies": {
     "chai": "^3.5.0",

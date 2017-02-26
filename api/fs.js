@@ -1,0 +1,1 @@
+module.exports = require('ergo-utils').fs.extend(require('fs-extra'));
