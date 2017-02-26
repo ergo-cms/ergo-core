@@ -1,6 +1,6 @@
 {
   "name": "ergo-core",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Core functionality for ergo-cms",
   "main": "api/index.js",
   "scripts": {
@@ -27,8 +27,7 @@
     "marked": "^0.3.6",
     "ssh2": "^0.5.4",
     "textile-js": "^2.0.1",
-    "usematch": "latest",
-    "jsinf": "latest"
+    "usematch": "latest"
   },
   "devDependencies": {
     "chai": "^3.5.0",
